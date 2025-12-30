@@ -1,0 +1,19 @@
+# Build artifacts
+*.elf
+*.bin
+*.hex
+*.map
+*.o
+*.d
+*.obj
+*.lst
+
+# IDE and Project files
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+
+# Static analysis and secondary outputs
+*.su

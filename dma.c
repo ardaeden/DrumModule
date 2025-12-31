@@ -1,4 +1,5 @@
 #include "dma.h"
+#include "audio_synth.h"
 
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL
@@ -9,52 +10,38 @@
 #define DMA1_BASE (AHB1PERIPH_BASE + 0x6000UL)
 #define SPI2_BASE (APB1PERIPH_BASE + 0x3800UL)
 
-/* RCC Registers */
 #define RCC_AHB1ENR (*(volatile uint32_t *)(RCC_BASE + 0x30))
 
 /* DMA1 Stream 4 Registers */
-#define DMA1_S4CR (*(volatile uint32_t *)(DMA1_BASE + 0x70)) /* Configuration  \
-                                                              */
-#define DMA1_S4NDTR                                                            \
-  (*(volatile uint32_t *)(DMA1_BASE + 0x74)) /* Number of data */
-#define DMA1_S4PAR                                                             \
-  (*(volatile uint32_t *)(DMA1_BASE + 0x78)) /* Peripheral address */
-#define DMA1_S4M0AR                                                            \
-  (*(volatile uint32_t *)(DMA1_BASE + 0x7C)) /* Memory 0 address */
-#define DMA1_HIFCR                                                             \
-  (*(volatile uint32_t *)(DMA1_BASE + 0x0C)) /* High interrupt flag clear */
+#define DMA1_S4CR (*(volatile uint32_t *)(DMA1_BASE + 0x70))
+#define DMA1_S4NDTR (*(volatile uint32_t *)(DMA1_BASE + 0x74))
+#define DMA1_S4PAR (*(volatile uint32_t *)(DMA1_BASE + 0x78))
+#define DMA1_S4M0AR (*(volatile uint32_t *)(DMA1_BASE + 0x7C))
 
-/* SPI2 Data Register */
+/* DMA Interrupt Registers */
+#define DMA1_LISR (*(volatile uint32_t *)(DMA1_BASE + 0x00))
+#define DMA1_HISR (*(volatile uint32_t *)(DMA1_BASE + 0x04))
+#define DMA1_LIFCR (*(volatile uint32_t *)(DMA1_BASE + 0x08))
+#define DMA1_HIFCR (*(volatile uint32_t *)(DMA1_BASE + 0x0C))
+
 #define SPI2_DR (*(volatile uint32_t *)(SPI2_BASE + 0x0C))
 
-/**
- * @brief Initialize DMA1 Stream 4 for I2S2 transmission
- * @param buffer Pointer to audio sample buffer (16-bit stereo)
- * @param len Number of 16-bit samples to transfer
- * @details Configures DMA in circular mode for continuous audio playback
- */
+/* NVIC */
+#define NVIC_ISER0 (*(volatile uint32_t *)0xE000E100)
+
 void DMA_Init_I2S(int16_t *buffer, uint32_t len) {
   /* Enable DMA1 clock */
   RCC_AHB1ENR |= (1 << 21);
 
-  /* Disable stream to allow configuration */
+  /* Disable stream */
   DMA1_S4CR &= ~(1 << 0);
   while (DMA1_S4CR & (1 << 0))
-    ; /* Wait for disable */
+    ;
 
-  /* Clear all interrupt flags for Stream 4 */
+  /* Clear IRQ flags */
   DMA1_HIFCR = (1 << 5) | (1 << 4) | (1 << 3) | (1 << 2) | (1 << 0);
 
-  /* Configure DMA1 Stream 4
-   * Channel 0: SPI2_TX
-   * Priority: Very High
-   * Memory size: 16-bit (halfword)
-   * Peripheral size: 16-bit (halfword)
-   * Memory increment: Enabled
-   * Peripheral increment: Disabled
-   * Circular mode: Enabled (continuous playback)
-   * Direction: Memory to Peripheral
-   */
+  /* Configure DMA1 Stream 4 */
   uint32_t cr = 0;
   cr |= (0 << 25); /* Channel 0 */
   cr |= (3 << 16); /* Priority: Very High */
@@ -63,14 +50,42 @@ void DMA_Init_I2S(int16_t *buffer, uint32_t len) {
   cr |= (1 << 10); /* MINC: Memory increment */
   cr |= (1 << 8);  /* CIRC: Circular mode */
   cr |= (1 << 6);  /* DIR: Memory to Peripheral */
+  cr |= (1 << 4);  /* TCIE: Transfer Complete Interrupt Enable */
+  cr |= (1 << 3);  /* HTIE: Half Transfer Interrupt Enable */
 
   DMA1_S4CR = cr;
 
-  /* Set transfer parameters */
-  DMA1_S4NDTR = len;                          /* Number of data items */
-  DMA1_S4PAR = (uint32_t)(uintptr_t)&SPI2_DR; /* Peripheral address */
-  DMA1_S4M0AR = (uint32_t)(uintptr_t)buffer;  /* Memory address */
+  DMA1_S4NDTR = len; /* Length is in 16-bit units */
+  DMA1_S4PAR = (uint32_t)(uintptr_t)&SPI2_DR;
+  DMA1_S4M0AR = (uint32_t)(uintptr_t)buffer;
+
+  /* Enable IRQ in NVIC (DMA1_Stream4 is IRQ 15) */
+  NVIC_ISER0 |= (1 << 15);
 
   /* Enable stream */
   DMA1_S4CR |= (1 << 0);
+}
+
+/**
+ * @brief DMA1 Stream 4 Interrupt Handler
+ * @note Called at Half-Transfer (fills first half) and Transfer-Complete (fills
+ * second half)
+ */
+void DMA1_Stream4_IRQHandler(void) {
+  /* Check TCIF4 (Bit 5 in HISR) */
+  if (DMA1_HISR & (1 << 5)) {
+    DMA1_HIFCR = (1 << 5); /* Clear TC flag */
+
+    /* Transfer Complete: Fill Second Half */
+    AudioSynth_FillBuffer(&audio_buffer[AUDIO_BUFFER_SIZE / 2],
+                          AUDIO_BUFFER_SIZE / 2);
+  }
+
+  /* Check HTIF4 (Bit 4 in HISR) */
+  if (DMA1_HISR & (1 << 4)) {
+    DMA1_HIFCR = (1 << 4); /* Clear HT flag */
+
+    /* Half Transfer: Fill First Half */
+    AudioSynth_FillBuffer(&audio_buffer[0], AUDIO_BUFFER_SIZE / 2);
+  }
 }

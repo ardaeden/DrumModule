@@ -4,6 +4,7 @@
 This project uses the STM32F411CEU6 "Black Pill" board.
 - **Display**: ST7789V (SPI)
 - **Audio**: PCM5102A (I2S)
+- **Storage**: MH-SD Card Module (SPI)
 
 ## Pin Mapping
 
@@ -30,6 +31,16 @@ This project uses the STM32F411CEU6 "Black Pill" board.
 | **SCK/MCLK**| **-** | Not Connected (Configured for 3-wire I2S) |
 
 *Note: You MUST configure your PCM5102A module to generate its own system clock (Internal PLL).*
+
+### MH-SD Card Module (SPI1 - Shared)
+| Interface Pin | STM32 Pin | Function | Notes |
+|:---:|:---:|---|---|
+| **CS** | **PB0** | Chip Select | |
+| **SCK** | **PA5** | SPI1_SCK | Shared with Display |
+| **MOSI** | **PA7** | SPI1_MOSI | Shared with Display |
+| **MISO** | **PA6** | SPI1_MISO | |
+| **VCC** | **5V** | Power | |
+| **GND** | **GND** | Ground | |
 
 ### Power Connections
 - **VIN / VCC**: **5V** (Preferred for modules with onboard regulator)

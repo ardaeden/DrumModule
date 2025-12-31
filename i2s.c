@@ -66,6 +66,7 @@ int I2S_Init(void) {
    * Configuration: Master Transmit
    * Standard: Philips
    * Data length: 16-bit
+   * Channel length: 16-bit (Standard)
    */
   SPI2_I2SCFGR = 0;
   SPI2_I2SCFGR |= (1 << 11); /* I2SMOD: I2S mode */
@@ -73,11 +74,12 @@ int I2S_Init(void) {
 
   /* Configure I2S clock prescaler
    * I2SCLK = 64MHz (from PLLI2S)
-   * Target sample rate: ~48kHz
-   * I2SDIV = 21 achieves approximately 48kHz
+   * Frame width = 32 bits (16L + 16R)
+   * Formula: Fs = I2SCLK / [32 × ((2 × I2SDIV) + ODD)]
+   * I2SDIV = 5, ODD = 1 -> Fs ≈ 182kHz (empirically ~46kHz)
    */
-  uint16_t i2sdiv = 21;
-  uint16_t odd = 0;
+  uint16_t i2sdiv = 5;
+  uint16_t odd = 1;
   uint16_t mckoe = 0; /* No master clock output (3-wire mode) */
 
   SPI2_I2SPR = (mckoe << 9) | (odd << 8) | i2sdiv;

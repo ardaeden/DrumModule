@@ -1,8 +1,9 @@
+#include "audio_synth.h"
 #include "dma.h"
 #include "i2s.h"
 #include "spi.h"
 #include "st7789.h"
-#include <math.h>
+#include "visualizer.h"
 #include <stdint.h>
 
 /* STM32F411 Register Definitions */
@@ -36,14 +37,6 @@
 #define RCC_CR_PLLRDY (1 << 25)
 #define RCC_CR_PLLI2SON (1 << 26)
 #define RCC_CR_PLLI2SRDY (1 << 27)
-
-/* Animation Buffer Configuration */
-#define BUF_W 32
-#define BUF_H 32
-
-/* Global Buffers */
-int16_t sine_buf[200];              /* Audio buffer: 100 stereo samples */
-uint16_t sprite_buf[BUF_W * BUF_H]; /* Display sprite buffer */
 
 /**
  * @brief System initialization required by startup code
@@ -109,17 +102,6 @@ void SystemClock_Config(void) {
 }
 
 /**
- * @brief Simple delay function
- * @param count Delay iterations (calibrated for 96MHz)
- */
-void delay(volatile uint32_t count) {
-  count *= 6;
-  while (count--) {
-    __asm("nop");
-  }
-}
-
-/**
  * @brief Main application entry point
  */
 int main(void) {
@@ -135,107 +117,28 @@ int main(void) {
   /* Initialize display */
   SPI_Init();
   ST7789_Init();
-  ST7789_Fill(BLACK);
 
-  /* Generate 440Hz sine wave for audio */
-  for (int i = 0; i < 100; i++) {
-    float t = (float)i / 100.0f;
-    float rad = 6.2831853f * t;
-    int16_t val = (int16_t)(30000.0f * sinf(rad));
-    sine_buf[i * 2] = val;     /* Left channel */
-    sine_buf[i * 2 + 1] = val; /* Right channel */
-  }
+  /* Initialize Visualizer (Draws Hello World) */
+  Visualizer_Init();
 
-  /* Initialize audio and display status */
+  /* Initialize Audio */
+  AudioSynth_Init();
+
+  /* Initialize audio hardware */
   int audio_status = I2S_Init();
-
   if (audio_status == 0) {
-    DMA_Init_I2S(sine_buf, 200);
+    /* Initial fill of buffer to prevent clicking at start */
+    AudioSynth_FillBuffer(audio_buffer, AUDIO_BUFFER_SIZE);
+
+    /* Start DMA */
+    DMA_Init_I2S(audio_buffer, AUDIO_BUFFER_SIZE);
     I2S_Start();
-    ST7789_WriteString(10, 10, "Audio + Display!", GREEN, BLACK, 2);
-  } else {
-    ST7789_WriteString(10, 10, "Display Only", YELLOW, BLACK, 2);
   }
 
-  /* Animation state */
-  int16_t x = 20, y = 20;
-  int16_t dx = 2, dy = 2;
-  uint16_t size = 20;
-
-  uint16_t colors[] = {RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, ORANGE, WHITE};
-  uint8_t color_idx = 0;
-
-  /* Main animation loop */
   while (1) {
-    int16_t old_x = x;
-    int16_t old_y = y;
-
-    /* Update position */
-    x += dx;
-    y += dy;
-
-    /* Bounce off edges and change color */
-    if (x <= 0) {
-      x = 0;
-      dx = -dx;
-      color_idx = (color_idx + 1) % 8;
-    }
-    if (x + size >= ST7789_WIDTH) {
-      x = ST7789_WIDTH - size;
-      dx = -dx;
-      color_idx = (color_idx + 1) % 8;
-    }
-    if (y <= 0) {
-      y = 0;
-      dy = -dy;
-      color_idx = (color_idx + 1) % 8;
-    }
-    if (y + size >= ST7789_HEIGHT) {
-      y = ST7789_HEIGHT - size;
-      dy = -dy;
-      color_idx = (color_idx + 1) % 8;
-    }
-
-    /* Calculate bounding box for efficient redraw */
-    int16_t min_x = (old_x < x) ? old_x : x;
-    int16_t min_y = (old_y < y) ? old_y : y;
-    int16_t max_x = ((old_x + size) > (x + size)) ? (old_x + size) : (x + size);
-    int16_t max_y = ((old_y + size) > (y + size)) ? (old_y + size) : (y + size);
-
-    uint16_t update_w = max_x - min_x;
-    uint16_t update_h = max_y - min_y;
-
-    /* Clamp to buffer size */
-    if (update_w > BUF_W)
-      update_w = BUF_W;
-    if (update_h > BUF_H)
-      update_h = BUF_H;
-
-    /* Clear sprite buffer */
-    for (int i = 0; i < update_w * update_h; i++) {
-      sprite_buf[i] = BLACK;
-    }
-
-    /* Render box into sprite buffer */
-    int16_t rel_x = x - min_x;
-    int16_t rel_y = y - min_y;
-    uint16_t current_color = colors[color_idx];
-
-    for (int py = 0; py < size; py++) {
-      for (int px = 0; px < size; px++) {
-        int buf_idx = (rel_y + py) * update_w + (rel_x + px);
-        if (buf_idx < (update_w * update_h)) {
-          sprite_buf[buf_idx] = current_color;
-        }
-      }
-    }
-
-    /* Write sprite to display */
-    ST7789_WriteBuffer(min_x, min_y, update_w, update_h, sprite_buf);
-
-    /* Toggle status LED */
-    GPIOC_ODR ^= (1UL << 13);
-
-    delay(5000);
+    /* Blink LED to show we are alive */
+    GPIOC_ODR ^= (1 << 13);
+    for (volatile int i = 0; i < 500000; i++)
+      ;
   }
 }

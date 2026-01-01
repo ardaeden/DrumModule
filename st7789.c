@@ -199,6 +199,22 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 }
 
 /**
+ * @brief Draw rectangle outline
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param w Width
+ * @param h Height
+ * @param color RGB565 color value
+ */
+void ST7789_DrawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                     uint16_t color) {
+  ST7789_FillRect(x, y, w, 1, color);         /* Top */
+  ST7789_FillRect(x, y + h - 1, w, 1, color); /* Bottom */
+  ST7789_FillRect(x, y, 1, h, color);         /* Left */
+  ST7789_FillRect(x + w - 1, y, 1, h, color); /* Right */
+}
+
+/**
  * @brief Write pixel buffer to display
  * @param x X coordinate
  * @param y Y coordinate

@@ -11,7 +11,7 @@ typedef void (*ButtonCallback)(uint8_t pressed);
 
 /**
  * @brief Initialize button with hardware interrupt
- * @details Configures PA0 with EXTI0 interrupt and TIM6 for debouncing
+ * @details Configures PA0 with EXTI0 interrupt and TIM5 for debouncing
  */
 void Button_Init(void);
 

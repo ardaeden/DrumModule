@@ -253,10 +253,8 @@ int main(void) {
       }
     }
 
-    /* No WFI here because we need to poll the button eagerly */
-    /* Could enable interrupts for PA0 later */
-    for (volatile int i = 0; i < 1000; i++)
-      ;
+    /* WaitForInterrupt to save power (wakes up on SysTick, Button, etc) */
+    __asm volatile("wfi");
   }
 }
 

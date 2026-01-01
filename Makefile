@@ -1,7 +1,7 @@
 TARGET = main
 
 # Sources
-SRCS = main.c startup_stm32f411.s spi.c st7789.c i2s.c dma.c audio_synth.c visualizer.c sdcard_spi.c sdcard.c fat32.c
+SRCS = main.c startup_stm32f411.s spi.c st7789.c i2s.c dma.c audio_synth.c visualizer.c sdcard_spi.c sdcard.c fat32.c encoder.c sequencer_clock.c sequencer.c
 
 # Toolchain
 CC = arm-none-eabi-gcc

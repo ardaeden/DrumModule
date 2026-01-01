@@ -1,11 +1,15 @@
 #include "audio_synth.h"
 #include "dma.h"
+#include "encoder.h"
 #include "fat32.h"
 #include "i2s.h"
+#include "sequencer.h"
+#include "sequencer_clock.h"
 #include "spi.h"
 #include "st7789.h"
 #include "visualizer.h"
 #include <stdint.h>
+#include <stdio.h>
 
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL
@@ -118,36 +122,81 @@ int main(void) {
   /* Initialize display */
   SPI_Init();
   ST7789_Init();
+  ST7789_Fill(BLACK);
 
-  /* Initialize SD card and display file list */
-  static FAT32_FileEntry files[FAT32_MAX_FILES];
-  int file_count = -1;
+  /* Initialize encoder */
+  Encoder_Init();
+  Encoder_SetLimits(40, 300); /* BPM range */
+  Encoder_SetValue(120);      /* Default BPM */
 
-  if (FAT32_Init() == 0) {
-    file_count = FAT32_ListRootFiles(files, FAT32_MAX_FILES);
-  }
+  /* Initialize sequencer */
+  Sequencer_Init();
 
-  /* Display file list (or error) */
-  Visualizer_ShowFileList(files, file_count);
+  /* Display initial info */
+  char buf[32];
+  ST7789_WriteString(10, 10, "DRUM SEQUENCER", CYAN, BLACK, 2);
+  ST7789_WriteString(10, 40, "Phase 1: Core", WHITE, BLACK, 1);
+  ST7789_WriteString(10, 60, "Encoder: OK", GREEN, BLACK, 1);
+  ST7789_WriteString(10, 80, "Clock: OK", GREEN, BLACK, 1);
+  ST7789_WriteString(10, 100, "Sequencer: OK", GREEN, BLACK, 1);
 
-  /* Initialize Audio */
-  AudioSynth_Init();
+  /* Create a simple test pattern */
+  Sequencer_SetStep(0, 0, 255);  /* Kick on step 0 */
+  Sequencer_SetStep(0, 4, 255);  /* Kick on step 4 */
+  Sequencer_SetStep(0, 8, 255);  /* Kick on step 8 */
+  Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
+  Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
+  Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
 
-  /* Initialize audio hardware */
-  int audio_status = I2S_Init();
-  if (audio_status == 0) {
-    /* Initial fill of buffer to prevent clicking at start */
-    AudioSynth_FillBuffer(audio_buffer, AUDIO_BUFFER_SIZE);
+  /* Start sequencer */
+  Sequencer_Start();
 
-    /* Start DMA */
-    DMA_Init_I2S(audio_buffer, AUDIO_BUFFER_SIZE);
-    I2S_Start();
-  }
+  uint32_t last_step = 0xFF;
+  int32_t last_encoder = 0;
+  int32_t last_increment = 1;
 
   while (1) {
-    /* Blink LED to show we are alive */
-    GPIOC_ODR ^= (1 << 13);
-    for (volatile int i = 0; i < 500000; i++)
+    /* Update encoder button state */
+    Encoder_UpdateButton();
+
+    /* Update BPM from encoder */
+    int32_t encoder_val = Encoder_GetValue();
+    if (encoder_val != last_encoder) {
+      Sequencer_SetBPM((uint16_t)encoder_val);
+      last_encoder = encoder_val;
+
+      /* Display BPM */
+      snprintf(buf, sizeof(buf), "BPM: %d   ", (int)encoder_val);
+      ST7789_WriteString(10, 140, buf, YELLOW, BLACK, 2);
+    }
+
+    /* Check for increment step change */
+    int32_t increment = Encoder_GetIncrementStep();
+    if (increment != last_increment) {
+      last_increment = increment;
+
+      /* Display increment step */
+      snprintf(buf, sizeof(buf), "Step: x%d  ", (int)increment);
+      ST7789_WriteString(10, 200, buf, MAGENTA, BLACK, 1);
+    }
+
+    /* Display current step */
+    uint8_t step = Sequencer_GetCurrentStep();
+    if (step != last_step) {
+      snprintf(buf, sizeof(buf), "Step: %02d/%02d  ", step + 1,
+               Sequencer_GetStepCount());
+      ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
+
+      /* Blink LED on step 0 */
+      if (step == 0) {
+        GPIOC_ODR ^= (1 << 13);
+      }
+
+      last_step = step;
+    }
+
+    /* Small delay */
+    for (volatile int i = 0; i < 10000; i++)
       ;
   }
 }

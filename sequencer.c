@@ -1,0 +1,129 @@
+#include "sequencer.h"
+#include "sequencer_clock.h"
+#include <string.h>
+
+/* Sequencer state */
+static Pattern current_pattern = {0};
+static volatile uint8_t current_step = 0;
+static volatile uint8_t playing = 0;
+static volatile uint8_t pulse_count = 0;
+
+/* Forward declaration */
+static void sequencer_clock_callback(uint8_t pulse);
+
+void Sequencer_Init(void) {
+  /* Initialize pattern with defaults */
+  current_pattern.step_count = 16;
+  current_pattern.bpm = 120;
+  strncpy(current_pattern.name, "PATTERN 001", sizeof(current_pattern.name));
+
+  /* Clear all steps */
+  memset(current_pattern.steps, 0, sizeof(current_pattern.steps));
+
+  /* Initialize clock */
+  Clock_Init();
+  Clock_SetBPM(current_pattern.bpm);
+  Clock_SetCallback(sequencer_clock_callback);
+
+  /* Reset state */
+  current_step = 0;
+  pulse_count = 0;
+  playing = 0;
+}
+
+void Sequencer_Start(void) {
+  current_step = 0;
+  pulse_count = 0;
+  playing = 1;
+  Clock_Start();
+}
+
+void Sequencer_Stop(void) {
+  playing = 0;
+  Clock_Stop();
+  current_step = 0;
+  pulse_count = 0;
+}
+
+uint8_t Sequencer_IsPlaying(void) { return playing; }
+
+uint8_t Sequencer_GetCurrentStep(void) { return current_step; }
+
+Pattern *Sequencer_GetPattern(void) { return &current_pattern; }
+
+void Sequencer_SetStep(uint8_t channel, uint8_t step, uint8_t value) {
+  if (channel < NUM_CHANNELS && step < MAX_STEPS) {
+    current_pattern.steps[channel][step] = value;
+  }
+}
+
+uint8_t Sequencer_GetStep(uint8_t channel, uint8_t step) {
+  if (channel < NUM_CHANNELS && step < MAX_STEPS) {
+    return current_pattern.steps[channel][step];
+  }
+  return 0;
+}
+
+void Sequencer_ToggleStep(uint8_t channel, uint8_t step) {
+  if (channel < NUM_CHANNELS && step < MAX_STEPS) {
+    if (current_pattern.steps[channel][step] == 0) {
+      current_pattern.steps[channel][step] = 255; /* Full velocity */
+    } else {
+      current_pattern.steps[channel][step] = 0;
+    }
+  }
+}
+
+void Sequencer_SetBPM(uint16_t bpm) {
+  current_pattern.bpm = bpm;
+  Clock_SetBPM(bpm);
+}
+
+uint16_t Sequencer_GetBPM(void) { return current_pattern.bpm; }
+
+void Sequencer_SetStepCount(uint8_t count) {
+  if (count >= 1 && count <= MAX_STEPS) {
+    current_pattern.step_count = count;
+  }
+}
+
+uint8_t Sequencer_GetStepCount(void) { return current_pattern.step_count; }
+
+void Sequencer_ClearPattern(void) {
+  memset(current_pattern.steps, 0, sizeof(current_pattern.steps));
+}
+
+/**
+ * @brief Clock callback - called at 24 PPQN
+ */
+static void sequencer_clock_callback(uint8_t pulse) {
+  (void)pulse; /* Unused in Phase 1 */
+
+  if (!playing)
+    return;
+
+  pulse_count++;
+
+  /* Trigger on every 6th pulse (16th notes at 24 PPQN)
+   * 24 PPQN / 4 = 6 pulses per 16th note
+   */
+  if (pulse_count >= 6) {
+    pulse_count = 0;
+
+    /* Advance to next step */
+    current_step++;
+    if (current_step >= current_pattern.step_count) {
+      current_step = 0;
+    }
+
+    /* TODO: Trigger audio samples here
+     * For now, this is just the step counter
+     * In Phase 2, we'll add:
+     * for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
+     *   if (current_pattern.steps[ch][current_step] > 0) {
+     *     AudioChannel_Trigger(ch, current_pattern.steps[ch][current_step]);
+     *   }
+     * }
+     */
+  }
+}

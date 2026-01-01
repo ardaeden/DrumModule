@@ -13,6 +13,8 @@
 /* Directory Entry Offsets */
 #define DIR_NAME 0
 #define DIR_ATTR 11
+#define DIR_FSTCLUS_HI 20
+#define DIR_FSTCLUS_LO 26
 #define DIR_FILE_SIZE 28
 
 /* Attributes */
@@ -166,6 +168,12 @@ int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files) {
       /* Get file size */
       files[file_count].size = read_u32(dir_entry, DIR_FILE_SIZE);
 
+      /* Get first cluster */
+      uint16_t cluster_hi = read_u16(dir_entry, DIR_FSTCLUS_HI);
+      uint16_t cluster_lo = read_u16(dir_entry, DIR_FSTCLUS_LO);
+      files[file_count].first_cluster =
+          ((uint32_t)cluster_hi << 16) | cluster_lo;
+
       /* Check if directory */
       files[file_count].is_dir = (attr & ATTR_DIRECTORY) ? 1 : 0;
 
@@ -174,4 +182,11 @@ int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files) {
   }
 
   return file_count;
+}
+
+uint32_t FAT32_GetFileSector(FAT32_FileEntry *file) {
+  if (file->first_cluster == 0) {
+    return 0;
+  }
+  return cluster_to_sector(file->first_cluster);
 }

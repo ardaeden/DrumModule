@@ -1,3 +1,4 @@
+#include "audio_mixer.h"
 #include "audio_synth.h"
 #include "dma.h"
 #include "encoder.h"
@@ -8,6 +9,7 @@
 #include "spi.h"
 #include "st7789.h"
 #include "visualizer.h"
+#include "wav_loader.h"
 #include <stdint.h>
 #include <stdio.h>
 
@@ -77,8 +79,8 @@ void SystemClock_Config(void) {
   /* Configure Main PLL: HSI/16 * 192 / 2 = 96MHz */
   RCC_PLLCFGR = 16 | (192 << 6) | (0 << 16) | (0 << 22) | (4 << 24);
 
-  /* Configure PLLI2S: HSI/16 * 192 / 3 = 64MHz for I2S */
-  RCC_PLLI2SCFGR = (192 << 6) | (3 << 28);
+  /* Configure PLLI2S for 44.1kHz audio: HSI/16 * 271 / 6 ≈ 45.17MHz */
+  RCC_PLLI2SCFGR = (271 << 6) | (6 << 28);
 
   /* Enable both PLLs */
   RCC_CR |= RCC_CR_PLLON | RCC_CR_PLLI2SON;
@@ -132,13 +134,45 @@ int main(void) {
   /* Initialize sequencer */
   Sequencer_Init();
 
-  /* Display initial info */
+  /* Initialize audio mixer */
+  AudioMixer_Init();
+
+  /* Initialize SD card */
   char buf[32];
+  int sd_status = FAT32_Init();
+
+  /* List files for debugging */
+  FAT32_FileEntry files[FAT32_MAX_FILES];
+  int file_count = 0;
+  if (sd_status == 0) {
+    file_count = FAT32_ListRootFiles(files, FAT32_MAX_FILES);
+    if (file_count < 0) {
+      file_count = -999; // Error indicator
+    }
+  }
+
+  /* Load drumset (test drumset with silence for now) */
+  static Drumset drumset;
+  Drumset_Load("/DRUMSETS/KIT001", &drumset);
+
+  /* Set samples for mixer */
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);
+  }
+
+  /* Display initial info */
   ST7789_WriteString(10, 10, "DRUM SEQUENCER", CYAN, BLACK, 2);
-  ST7789_WriteString(10, 40, "Phase 1: Core", WHITE, BLACK, 1);
-  ST7789_WriteString(10, 60, "Encoder: OK", GREEN, BLACK, 1);
-  ST7789_WriteString(10, 80, "Clock: OK", GREEN, BLACK, 1);
-  ST7789_WriteString(10, 100, "Sequencer: OK", GREEN, BLACK, 1);
+  ST7789_WriteString(10, 40, "Phase 2: Audio", WHITE, BLACK, 1);
+  ST7789_WriteString(10, 60, sd_status == 0 ? "SD: OK" : "SD: FAIL",
+                     sd_status == 0 ? GREEN : RED, BLACK, 1);
+
+  snprintf(buf, sizeof(buf), "Files: %d", file_count);
+  ST7789_WriteString(10, 80, buf, WHITE, BLACK, 1);
+
+  // Show first 3 files
+  for (int i = 0; i < file_count && i < 3; i++) {
+    ST7789_WriteString(10, 100 + i * 15, files[i].name, YELLOW, BLACK, 1);
+  }
 
   /* Create a simple test pattern */
   Sequencer_SetStep(0, 0, 255);  /* Kick on step 0 */
@@ -147,6 +181,26 @@ int main(void) {
   Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
   Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
   Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
+
+  /* Initialize audio hardware */
+  int audio_status = I2S_Init();
+  if (audio_status == 0) {
+    /* Start DMA with silence */
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+      audio_buffer[i] = 0;
+    }
+    DMA_Init_I2S(audio_buffer, AUDIO_BUFFER_SIZE);
+    I2S_Start();
+  }
+
+  /* Show sample loading status */
+  ST7789_WriteString(10, 140, "Samples:", WHITE, BLACK, 1);
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    snprintf(buf, sizeof(buf), "%s: %lu", drumset.sample_names[i],
+             drumset.lengths[i]);
+    ST7789_WriteString(10, 160 + i * 15, buf,
+                       drumset.lengths[i] > 1000 ? GREEN : RED, BLACK, 1);
+  }
 
   /* Start sequencer */
   Sequencer_Start();

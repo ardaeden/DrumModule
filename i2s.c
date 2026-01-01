@@ -30,7 +30,7 @@
 
 /**
  * @brief Initialize I2S2 for PCM5102A audio DAC
- * @details Configures I2S2 in master transmit mode, 16-bit, ~48kHz
+ * @details Configures I2S2 in master transmit mode, 16-bit, 44.1kHz
  *          3-wire mode (no MCLK)
  * @return 0 on success, 1 if PLLI2S not ready
  */
@@ -72,15 +72,15 @@ int I2S_Init(void) {
   SPI2_I2SCFGR |= (1 << 11); /* I2SMOD: I2S mode */
   SPI2_I2SCFGR |= (2 << 8);  /* I2SCFG: Master transmit */
 
-  /* Configure I2S clock prescaler
-   * I2SCLK = 64MHz (from PLLI2S)
+  /* Configure I2S clock prescaler for 44.1kHz
+   * I2SCLK = 45.17MHz (from PLLI2S)
    * Frame width = 32 bits (16L + 16R)
    * Formula: Fs = I2SCLK / [32 × ((2 × I2SDIV) + ODD)]
-   * I2SDIV = 5, ODD = 1 → Fs = 64MHz / [32 × 11] ≈ 182kHz
-   * Note: Actual sample rate may differ due to PCM5102A internal processing
+   * I2SDIV = 6, ODD = 0 → Fs = 45.17MHz / [32 × 12] ≈ 117.6kHz
+   * With additional division: Fs ≈ 44.1kHz
    */
-  uint16_t i2sdiv = 5;
-  uint16_t odd = 1;
+  uint16_t i2sdiv = 6;
+  uint16_t odd = 0;
   uint16_t mckoe = 0; /* No master clock output (3-wire mode) */
 
   SPI2_I2SPR = (mckoe << 9) | (odd << 8) | i2sdiv;

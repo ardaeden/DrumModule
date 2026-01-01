@@ -12,6 +12,7 @@
 typedef struct {
   char name[FAT32_FILENAME_LEN];
   uint32_t size;
+  uint32_t first_cluster;
   uint8_t is_dir;
 } FAT32_FileEntry;
 
@@ -28,5 +29,12 @@ int FAT32_Init(void);
  * @return Number of files found, or -1 on error
  */
 int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files);
+
+/**
+ * @brief Get first sector of a file
+ * @param file File entry
+ * @return First sector number
+ */
+uint32_t FAT32_GetFileSector(FAT32_FileEntry *file);
 
 #endif

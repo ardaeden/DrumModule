@@ -1,4 +1,5 @@
 #include "sequencer.h"
+#include "audio_mixer.h"
 #include "sequencer_clock.h"
 #include <string.h>
 
@@ -116,14 +117,11 @@ static void sequencer_clock_callback(uint8_t pulse) {
       current_step = 0;
     }
 
-    /* TODO: Trigger audio samples here
-     * For now, this is just the step counter
-     * In Phase 2, we'll add:
-     * for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
-     *   if (current_pattern.steps[ch][current_step] > 0) {
-     *     AudioChannel_Trigger(ch, current_pattern.steps[ch][current_step]);
-     *   }
-     * }
-     */
+    /* Trigger audio samples */
+    for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
+      if (current_pattern.steps[ch][current_step] > 0) {
+        AudioMixer_Trigger(ch, current_pattern.steps[ch][current_step]);
+      }
+    }
   }
 }

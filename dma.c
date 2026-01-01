@@ -1,5 +1,6 @@
 #include "dma.h"
-#include "audio_synth.h"
+#include "audio_mixer.h"
+#include "audio_synth.h" /* For audio_buffer and AUDIO_BUFFER_SIZE */
 
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL
@@ -77,8 +78,8 @@ void DMA1_Stream4_IRQHandler(void) {
     DMA1_HIFCR = (1 << 5); /* Clear TC flag */
 
     /* Transfer Complete: Fill Second Half */
-    AudioSynth_FillBuffer(&audio_buffer[AUDIO_BUFFER_SIZE / 2],
-                          AUDIO_BUFFER_SIZE / 2);
+    AudioMixer_Process(&audio_buffer[AUDIO_BUFFER_SIZE / 2],
+                       AUDIO_BUFFER_SIZE / 4); /* /4 because stereo frames */
   }
 
   /* Check HTIF4 (Bit 4 in HISR) */
@@ -86,6 +87,6 @@ void DMA1_Stream4_IRQHandler(void) {
     DMA1_HIFCR = (1 << 4); /* Clear HT flag */
 
     /* Half Transfer: Fill First Half */
-    AudioSynth_FillBuffer(&audio_buffer[0], AUDIO_BUFFER_SIZE / 2);
+    AudioMixer_Process(&audio_buffer[0], AUDIO_BUFFER_SIZE / 4);
   }
 }

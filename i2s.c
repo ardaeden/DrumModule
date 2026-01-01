@@ -76,7 +76,8 @@ int I2S_Init(void) {
    * I2SCLK = 64MHz (from PLLI2S)
    * Frame width = 32 bits (16L + 16R)
    * Formula: Fs = I2SCLK / [32 × ((2 × I2SDIV) + ODD)]
-   * I2SDIV = 5, ODD = 1 -> Fs ≈ 182kHz (empirically ~46kHz)
+   * I2SDIV = 5, ODD = 1 → Fs = 64MHz / [32 × 11] ≈ 182kHz
+   * Note: Actual sample rate may differ due to PCM5102A internal processing
    */
   uint16_t i2sdiv = 5;
   uint16_t odd = 1;

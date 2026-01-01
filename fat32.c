@@ -1,7 +1,6 @@
 #include "fat32.h"
 #include "sdcard.h"
 #include <stdint.h>
-#include <string.h>
 
 /* FAT32 Boot Sector Offsets */
 #define BS_BYTES_PER_SEC 11
@@ -14,8 +13,6 @@
 /* Directory Entry Offsets */
 #define DIR_NAME 0
 #define DIR_ATTR 11
-#define DIR_FSTCLUS_HI 20
-#define DIR_FSTCLUS_LO 26
 #define DIR_FILE_SIZE 28
 
 /* Attributes */

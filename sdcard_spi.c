@@ -9,7 +9,6 @@
 #define RCC_BASE (AHB1PERIPH_BASE + 0x3800UL)
 #define GPIOB_BASE (AHB1PERIPH_BASE + 0x0400UL)
 #define SPI3_BASE (APB1PERIPH_BASE + 0x3C00UL)
-#define AFIO_BASE (PERIPH_BASE + 0x00010000UL)
 
 /* RCC Registers */
 #define RCC_AHB1ENR (*(volatile uint32_t *)(RCC_BASE + 0x30))
@@ -26,7 +25,6 @@
 
 /* SPI3 Registers */
 #define SPI3_CR1 (*(volatile uint32_t *)(SPI3_BASE + 0x00))
-#define SPI3_CR2 (*(volatile uint32_t *)(SPI3_BASE + 0x04))
 #define SPI3_SR (*(volatile uint32_t *)(SPI3_BASE + 0x08))
 #define SPI3_DR (*(volatile uint32_t *)(SPI3_BASE + 0x0C))
 
@@ -45,27 +43,14 @@
 #define SPI_SR_RXNE (1 << 0)
 #define SPI_SR_BSY (1 << 7)
 
-/* AFIO Register for JTAG disable (STM32F4 uses different method) */
-/* On STM32F4, we need to remap via GPIO alternate function, JTAG is on by
- * default */
-
 /**
- * @brief Disable JTAG to free PB3, PB4 for SPI3
- * @note On STM32F4, JTAG pins are released by configuring them as alternate
- * function This is done automatically when we set AF6 on PB3/PB4
+ * @brief Initialize SPI3 for SD card communication
+ * @note JTAG is automatically disabled when PB3/PB4 are configured as AF6
  */
-static void JTAG_Disable(void) {
-  /* On STM32F4, simply configuring PB3/PB4 as AF will override JTAG */
-  /* No special register needed like on STM32F1 */
-}
-
 void SDCARD_SPI_Init(void) {
   /* Enable peripheral clocks */
   RCC_AHB1ENR |= (1 << 1);  /* GPIOB */
   RCC_APB1ENR |= (1 << 15); /* SPI3 */
-
-  /* Disable JTAG to free PB3, PB4 */
-  JTAG_Disable();
 
   /* Configure PB0 as output (CS) */
   GPIOB_MODER &= ~(3UL << (0 * 2));

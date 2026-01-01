@@ -10,7 +10,9 @@ static volatile uint8_t playing = 0;
 static volatile uint8_t pulse_count = 0;
 
 /* Forward declaration */
+/* Forward declaration */
 static void sequencer_clock_callback(uint8_t pulse);
+static void TriggerCurrentStep(void);
 
 void Sequencer_Init(void) {
   /* Initialize pattern with defaults */
@@ -36,6 +38,10 @@ void Sequencer_Start(void) {
   current_step = 0;
   pulse_count = 0;
   playing = 1;
+
+  /* Trigger first step immediately */
+  TriggerCurrentStep();
+
   Clock_Start();
 }
 
@@ -95,6 +101,17 @@ void Sequencer_ClearPattern(void) {
 }
 
 /**
+ * @brief Helper to trigger samples for current step
+ */
+static void TriggerCurrentStep(void) {
+  for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
+    if (current_pattern.steps[ch][current_step] > 0) {
+      AudioMixer_Trigger(ch, current_pattern.steps[ch][current_step]);
+    }
+  }
+}
+
+/**
  * @brief Clock callback - called at 24 PPQN
  */
 static void sequencer_clock_callback(uint8_t pulse) {
@@ -118,10 +135,6 @@ static void sequencer_clock_callback(uint8_t pulse) {
     }
 
     /* Trigger audio samples */
-    for (uint8_t ch = 0; ch < NUM_CHANNELS; ch++) {
-      if (current_pattern.steps[ch][current_step] > 0) {
-        AudioMixer_Trigger(ch, current_pattern.steps[ch][current_step]);
-      }
-    }
+    TriggerCurrentStep();
   }
 }

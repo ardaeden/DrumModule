@@ -108,6 +108,10 @@ void SystemClock_Config(void) {
 /**
  * @brief Main application entry point
  */
+/* Private function prototypes */
+static void LoadTestPattern(void);
+static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset);
+
 int main(void) {
   /* Initialize LED on PC13 for status indication */
   RCC_AHB1ENR |= (1 << 2);
@@ -135,7 +139,6 @@ int main(void) {
   AudioMixer_Init();
 
   /* Initialize SD card */
-  char buf[32];
   int sd_status = FAT32_Init();
 
   /* List files for debugging */
@@ -157,42 +160,18 @@ int main(void) {
     AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);
   }
 
-  /* Display initial info */
-  ST7789_WriteString(10, 10, "DRUM SEQUENCER", CYAN, BLACK, 2);
-  ST7789_WriteString(10, 40, "Phase 2: Audio", WHITE, BLACK, 1);
-  ST7789_WriteString(10, 60, sd_status == 0 ? "SD: OK" : "SD: FAIL",
-                     sd_status == 0 ? GREEN : RED, BLACK, 1);
+  /* Draw status screen */
+  DrawStatusScreen(sd_status, file_count, &drumset);
 
-  snprintf(buf, sizeof(buf), "Files: %d", file_count);
-  ST7789_WriteString(10, 80, buf, WHITE, BLACK, 1);
-
-  // Show first 3 files
-  for (int i = 0; i < file_count && i < 3; i++) {
-    ST7789_WriteString(10, 100 + i * 15, files[i].name, YELLOW, BLACK, 1);
+  /* Show first 3 files if available */
+  if (sd_status == 0) {
+    for (int i = 0; i < file_count && i < 3; i++) {
+      ST7789_WriteString(10, 100 + i * 15, files[i].name, YELLOW, BLACK, 1);
+    }
   }
 
-  /* Create a simple test pattern */
-  Sequencer_SetStep(0, 0, 255);  /* Kick on step 0 */
-  Sequencer_SetStep(0, 4, 255);  /* Kick on step 4 */
-  Sequencer_SetStep(0, 8, 255);  /* Kick on step 8 */
-  Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
-
-  Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
-  Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
-
-  /* Hats pattern */
-  Sequencer_SetStep(2, 2, 200);  /* Hats on step 2 */
-  Sequencer_SetStep(2, 6, 200);  /* Hats on step 6 */
-  Sequencer_SetStep(2, 10, 200); /* Hats on step 10 */
-  Sequencer_SetStep(2, 14, 200); /* Hats on step 14 */
-
-  /* Clap pattern with ghosts, panned left */
-  AudioMixer_SetPan(3, 80);      /* Pan Claps Left (Center is 128) */
-  Sequencer_SetStep(3, 4, 255);  /* Clap on 4 (Main) */
-  Sequencer_SetStep(3, 11, 40);  /* Ghost */
-  Sequencer_SetStep(3, 12, 255); /* Clap on 12 (Main) */
-  Sequencer_SetStep(3, 14, 60);  /* Ghost */
-  Sequencer_SetStep(3, 15, 30);  /* Ghost */
+  /* Load test pattern */
+  LoadTestPattern();
 
   /* Initialize audio hardware */
   int audio_status = I2S_Init();
@@ -203,15 +182,6 @@ int main(void) {
     }
     DMA_Init_I2S(audio_buffer, AUDIO_BUFFER_SIZE);
     I2S_Start();
-  }
-
-  /* Show sample loading status */
-  ST7789_WriteString(10, 140, "Samples:", WHITE, BLACK, 1);
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    snprintf(buf, sizeof(buf), "%s: %lu", drumset.sample_names[i],
-             drumset.lengths[i]);
-    ST7789_WriteString(10, 160 + i * 15, buf,
-                       drumset.lengths[i] > 1000 ? GREEN : RED, BLACK, 1);
   }
 
   /* Start sequencer */
@@ -232,6 +202,7 @@ int main(void) {
       last_encoder = encoder_val;
 
       /* Display BPM */
+      char buf[32];
       snprintf(buf, sizeof(buf), "BPM: %d   ", (int)encoder_val);
       ST7789_WriteString(10, 140, buf, YELLOW, BLACK, 2);
     }
@@ -242,6 +213,7 @@ int main(void) {
       last_increment = increment;
 
       /* Display increment step */
+      char buf[32];
       snprintf(buf, sizeof(buf), "Step: x%d  ", (int)increment);
       ST7789_WriteString(10, 200, buf, MAGENTA, BLACK, 1);
     }
@@ -249,6 +221,7 @@ int main(void) {
     /* Display current step */
     uint8_t step = Sequencer_GetCurrentStep();
     if (step != last_step) {
+      char buf[32];
       snprintf(buf, sizeof(buf), "Step: %02d/%02d  ", step + 1,
                Sequencer_GetStepCount());
       ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
@@ -263,8 +236,60 @@ int main(void) {
       last_step = step;
     }
 
-    /* Small delay */
-    for (volatile int i = 0; i < 10000; i++)
-      ;
+    /* Wait for interrupt to save power */
+    __asm("wfi");
+  }
+}
+
+/**
+ * @brief Initialize a test pattern
+ */
+static void LoadTestPattern(void) {
+  /* Kick pattern */
+  Sequencer_SetStep(0, 0, 255);  /* Kick on step 0 */
+  Sequencer_SetStep(0, 4, 255);  /* Kick on step 4 */
+  Sequencer_SetStep(0, 8, 255);  /* Kick on step 8 */
+  Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
+
+  /* Snare pattern */
+  Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
+  Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
+
+  /* Hats pattern */
+  Sequencer_SetStep(2, 2, 200);  /* Hats on step 2 */
+  Sequencer_SetStep(2, 6, 200);  /* Hats on step 6 */
+  Sequencer_SetStep(2, 10, 200); /* Hats on step 10 */
+  Sequencer_SetStep(2, 14, 200); /* Hats on step 14 */
+
+  /* Clap pattern with ghosts, panned left */
+  AudioMixer_SetPan(3, 80);      /* Pan Claps Left (Center is 128) */
+  Sequencer_SetStep(3, 4, 255);  /* Clap on 4 (Main) */
+  Sequencer_SetStep(3, 11, 40);  /* Ghost */
+  Sequencer_SetStep(3, 12, 255); /* Clap on 12 (Main) */
+  Sequencer_SetStep(3, 14, 60);  /* Ghost */
+  Sequencer_SetStep(3, 15, 30);  /* Ghost */
+}
+
+/**
+ * @brief Draw initial status screen
+ */
+static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset) {
+  char buf[32];
+
+  ST7789_WriteString(10, 10, "DRUM SEQUENCER", CYAN, BLACK, 2);
+  ST7789_WriteString(10, 40, "Phase 2: Audio", WHITE, BLACK, 1);
+  ST7789_WriteString(10, 60, sd_status == 0 ? "SD: OK" : "SD: FAIL",
+                     sd_status == 0 ? GREEN : RED, BLACK, 1);
+
+  snprintf(buf, sizeof(buf), "Files: %d", file_count);
+  ST7789_WriteString(10, 80, buf, WHITE, BLACK, 1);
+
+  /* Show sample loading status */
+  ST7789_WriteString(10, 140, "Samples:", WHITE, BLACK, 1);
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    snprintf(buf, sizeof(buf), "%s: %lu", drumset->sample_names[i],
+             (unsigned long)drumset->lengths[i]);
+    ST7789_WriteString(10, 160 + i * 15, buf,
+                       drumset->lengths[i] > 1000 ? GREEN : RED, BLACK, 1);
   }
 }

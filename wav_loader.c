@@ -1,7 +1,6 @@
 #include "wav_loader.h"
 #include "fat32.h"
 #include "sdcard.h"
-#include <stdlib.h>
 #include <string.h>
 
 /* WAV header structure */
@@ -29,21 +28,6 @@ static uint8_t sector_buffer[512];
 static int16_t sample_buffers[NUM_CHANNELS][MAX_SAMPLE_SIZE];
 
 /**
- * @brief Read 16-bit little-endian value
- */
-static uint16_t read_u16(uint8_t *buf, uint16_t offset) {
-  return buf[offset] | (buf[offset + 1] << 8);
-}
-
-/**
- * @brief Read 32-bit little-endian value
- */
-static uint32_t read_u32(uint8_t *buf, uint16_t offset) {
-  return buf[offset] | (buf[offset + 1] << 8) | (buf[offset + 2] << 16) |
-         (buf[offset + 3] << 24);
-}
-
-/**
  * @brief Find file in root directory
  * @param filename File to find
  * @param file_entry Output file entry
@@ -64,49 +48,6 @@ static int find_file(const char *filename, FAT32_FileEntry *file_entry) {
   }
 
   return -1;
-}
-
-int WAV_Load(const char *path, int16_t **data, uint32_t *length) {
-  FAT32_FileEntry file;
-
-  // Find file
-  if (find_file(path, &file) != 0) {
-    return -1; // File not found
-  }
-
-  // Read first sector to get WAV header
-  uint32_t first_sector = FAT32_GetFileSector(&file);
-  if (SDCARD_ReadBlock(first_sector, sector_buffer) != SDCARD_OK) {
-    return -1;
-  }
-
-  // Parse WAV header
-  WAVHeader *header = (WAVHeader *)sector_buffer;
-
-  // Validate WAV format
-  if (memcmp(header->riff, "RIFF", 4) != 0 ||
-      memcmp(header->wave, "WAVE", 4) != 0 ||
-      header->audio_format != 1 || // PCM
-      header->num_channels != 1 || // Mono
-      header->sample_rate != 44100 || header->bits_per_sample != 16) {
-    return -1; // Invalid format
-  }
-
-  // Calculate number of samples
-  uint32_t num_samples = header->data_size / 2; // 16-bit samples
-
-  // Limit to buffer size
-  if (num_samples > MAX_SAMPLE_SIZE) {
-    num_samples = MAX_SAMPLE_SIZE;
-  }
-
-  *length = num_samples;
-
-  // Note: For now, return NULL as we need to implement
-  // multi-sector reading. This is a placeholder.
-  *data = NULL;
-
-  return 0;
 }
 
 /**

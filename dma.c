@@ -1,6 +1,8 @@
 #include "dma.h"
 #include "audio_mixer.h"
-#include "audio_synth.h" /* For audio_buffer and AUDIO_BUFFER_SIZE */
+
+/* Audio buffer definition */
+int16_t audio_buffer[AUDIO_BUFFER_SIZE];
 
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL

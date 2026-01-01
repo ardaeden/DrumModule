@@ -1,14 +1,11 @@
 #include "audio_mixer.h"
-#include "audio_synth.h"
 #include "dma.h"
 #include "encoder.h"
 #include "fat32.h"
 #include "i2s.h"
 #include "sequencer.h"
-#include "sequencer_clock.h"
 #include "spi.h"
 #include "st7789.h"
-#include "visualizer.h"
 #include "wav_loader.h"
 #include <stdint.h>
 #include <stdio.h>

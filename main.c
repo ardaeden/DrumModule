@@ -31,6 +31,10 @@
 #define FLASH_ACR (*(volatile uint32_t *)(FLASH_BASE + 0x00))
 
 /* GPIO Registers */
+#define GPIOA_MODER (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x00))
+#define GPIOA_PUPDR (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x0C))
+#define GPIOA_IDR (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x10))
+
 #define GPIOC_MODER (*(volatile uint32_t *)(GPIOC_BASE + 0x00))
 #define GPIOC_ODR (*(volatile uint32_t *)(GPIOC_BASE + 0x14))
 
@@ -113,6 +117,12 @@ static void LoadTestPattern(void);
 static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset);
 
 int main(void) {
+  /* Initialize PA0 (User Button) as Input with Pull-Down */
+  RCC_AHB1ENR |= (1 << 0);          /* GPIOA */
+  GPIOA_MODER &= ~(3UL << (0 * 2)); /* Input */
+  GPIOA_PUPDR &= ~(3UL << (0 * 2));
+  GPIOA_PUPDR |= (2UL << (0 * 2)); /* Pull-Down */
+
   /* Initialize LED on PC13 for status indication */
   RCC_AHB1ENR |= (1 << 2);
   GPIOC_MODER &= ~(3UL << (13 * 2));
@@ -184,14 +194,42 @@ int main(void) {
     I2S_Start();
   }
 
-  /* Start sequencer */
-  Sequencer_Start();
+  /* Boot in STOPPED state */
+  ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+  uint8_t is_playing = 0;
+  uint8_t btn_prev = 0;
+  uint32_t btn_debounce = 0;
 
   uint32_t last_step = 0xFF;
   int32_t last_encoder = 0;
   int32_t last_increment = 1;
 
   while (1) {
+    /* Poll User Button (PA0) */
+    uint8_t btn_curr = (GPIOA_IDR & (1 << 0)) ? 1 : 0;
+    if (btn_curr != btn_prev) {
+      if (btn_debounce > 2000) { /* Simple debounce counter */
+        if (btn_curr) {
+          /* Button Pressed: Toggle Play/Stop */
+          is_playing = !is_playing;
+          if (is_playing) {
+            Sequencer_Start();
+            ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
+          } else {
+            Sequencer_Stop();
+            /* Turn off LED when stopped */
+            GPIOC_ODR |= (1 << 13);
+            ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+          }
+          btn_debounce = 0;
+        }
+      }
+    } else {
+      if (btn_debounce < 0xFFFFFFFF)
+        btn_debounce++;
+    }
+    btn_prev = btn_curr;
+
     /* Update encoder button state */
     Encoder_UpdateButton();
 
@@ -218,26 +256,30 @@ int main(void) {
       ST7789_WriteString(10, 200, buf, MAGENTA, BLACK, 1);
     }
 
-    /* Display current step */
-    uint8_t step = Sequencer_GetCurrentStep();
-    if (step != last_step) {
-      char buf[32];
-      snprintf(buf, sizeof(buf), "Step: %02d/%02d  ", step + 1,
-               Sequencer_GetStepCount());
-      ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
+    /* Display current step if playing */
+    if (is_playing) {
+      uint8_t step = Sequencer_GetCurrentStep();
+      if (step != last_step) {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "Step: %02d/%02d  ", step + 1,
+                 Sequencer_GetStepCount());
+        ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
 
-      /* Blink LED on quarter notes (steps 0, 4, 8, 12) */
-      if ((step % 4) == 0) {
-        GPIOC_ODR &= ~(1 << 13); /* Turn ON (Active Low) */
-      } else {
-        GPIOC_ODR |= (1 << 13); /* Turn OFF */
+        /* Blink LED on quarter notes (steps 0, 4, 8, 12) */
+        if ((step % 4) == 0) {
+          GPIOC_ODR &= ~(1 << 13); /* Turn ON (Active Low) */
+        } else {
+          GPIOC_ODR |= (1 << 13); /* Turn OFF */
+        }
+
+        last_step = step;
       }
-
-      last_step = step;
     }
 
-    /* Wait for interrupt to save power */
-    __asm("wfi");
+    /* No WFI here because we need to poll the button eagerly */
+    /* Could enable interrupts for PA0 later */
+    for (volatile int i = 0; i < 1000; i++)
+      ;
   }
 }
 

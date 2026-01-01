@@ -179,8 +179,23 @@ int main(void) {
   Sequencer_SetStep(0, 4, 255);  /* Kick on step 4 */
   Sequencer_SetStep(0, 8, 255);  /* Kick on step 8 */
   Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
+
   Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
   Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
+
+  /* Hats pattern */
+  Sequencer_SetStep(2, 2, 200);  /* Hats on step 2 */
+  Sequencer_SetStep(2, 6, 200);  /* Hats on step 6 */
+  Sequencer_SetStep(2, 10, 200); /* Hats on step 10 */
+  Sequencer_SetStep(2, 14, 200); /* Hats on step 14 */
+
+  /* Clap pattern with ghosts, panned left */
+  AudioMixer_SetPan(3, 80);      /* Pan Claps Left (Center is 128) */
+  Sequencer_SetStep(3, 4, 255);  /* Clap on 4 (Main) */
+  Sequencer_SetStep(3, 11, 40);  /* Ghost */
+  Sequencer_SetStep(3, 12, 255); /* Clap on 12 (Main) */
+  Sequencer_SetStep(3, 14, 60);  /* Ghost */
+  Sequencer_SetStep(3, 15, 30);  /* Ghost */
 
   /* Initialize audio hardware */
   int audio_status = I2S_Init();

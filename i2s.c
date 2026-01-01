@@ -72,14 +72,10 @@ int I2S_Init(void) {
   SPI2_I2SCFGR |= (1 << 11); /* I2SMOD: I2S mode */
   SPI2_I2SCFGR |= (2 << 8);  /* I2SCFG: Master transmit */
 
-  /* Configure I2S clock prescaler for 44.1kHz
-   * I2SCLK = 45.17MHz (from PLLI2S)
-   * Frame width = 32 bits (16L + 16R)
-   * Formula: Fs = I2SCLK / [32 × ((2 × I2SDIV) + ODD)]
-   * I2SDIV = 6, ODD = 0 → Fs = 45.17MHz / [32 × 12] ≈ 117.6kHz
-   * With additional division: Fs ≈ 44.1kHz
+  /* Configure I2S clock prescaler
+   * Adjusted to 4 based on listening tests (6 was still too low)
    */
-  uint16_t i2sdiv = 6;
+  uint16_t i2sdiv = 4;
   uint16_t odd = 0;
   uint16_t mckoe = 0; /* No master clock output (3-wire mode) */
 

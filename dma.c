@@ -79,7 +79,7 @@ void DMA1_Stream4_IRQHandler(void) {
 
     /* Transfer Complete: Fill Second Half */
     AudioMixer_Process(&audio_buffer[AUDIO_BUFFER_SIZE / 2],
-                       AUDIO_BUFFER_SIZE / 4); /* /4 because stereo frames */
+                       AUDIO_BUFFER_SIZE / 4);
   }
 
   /* Check HTIF4 (Bit 4 in HISR) */

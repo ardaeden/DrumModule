@@ -7,13 +7,19 @@ typedef struct {
   uint32_t sample_length;
   uint32_t playback_pos;
   uint8_t volume;
+  uint8_t pan; /* 0 = Left, 128 = Center, 255 = Right */
   uint8_t active;
 } AudioChannel;
 
 /* Channel array */
 static AudioChannel channels[NUM_CHANNELS];
 
-void AudioMixer_Init(void) { memset(channels, 0, sizeof(channels)); }
+void AudioMixer_Init(void) {
+  memset(channels, 0, sizeof(channels));
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    channels[i].pan = 128; /* Default center */
+  }
+}
 
 void AudioMixer_SetSample(uint8_t channel, int16_t *sample_data,
                           uint32_t sample_length) {
@@ -24,6 +30,15 @@ void AudioMixer_SetSample(uint8_t channel, int16_t *sample_data,
   channels[channel].sample_length = sample_length;
   channels[channel].playback_pos = 0;
   channels[channel].active = 0;
+  // Preserve pan if already set, otherwise default to center if init cleared it
+  if (channels[channel].pan == 0 && channels[0].pan == 0)
+    channels[channel].pan = 128;
+}
+
+void AudioMixer_SetPan(uint8_t channel, uint8_t pan) {
+  if (channel >= NUM_CHANNELS)
+    return;
+  channels[channel].pan = pan;
 }
 
 void AudioMixer_Trigger(uint8_t channel, uint8_t velocity) {
@@ -65,9 +80,17 @@ void AudioMixer_Process(int16_t *output, uint32_t length) {
         /* Apply volume (velocity) */
         sample = (sample * channels[ch].volume) >> 8;
 
-        /* Mix to both channels (mono to stereo) */
-        mix_left += sample;
-        mix_right += sample;
+        /* Apply panning */
+        int32_t pan = channels[ch].pan;
+        int32_t pan_left = (255 - pan);
+        int32_t pan_right = pan;
+
+        /* Mix to channels */
+        // sample is 16-bit. pan is 8-bit. Result 24-bit. >> 8 back to 16-bit.
+        // Multiply by 2 to maintain unity gain at center (128 = 0.5 -> * 2
+        // = 1.0)
+        mix_left += (sample * pan_left) >> 7;
+        mix_right += (sample * pan_right) >> 7;
 
         /* Check if sample finished */
         if (channels[ch].playback_pos >= channels[ch].sample_length) {

@@ -20,6 +20,13 @@ void AudioMixer_SetSample(uint8_t channel, int16_t *sample_data,
                           uint32_t sample_length);
 
 /**
+ * @brief Set pan for channel
+ * @param channel Channel number (0-3)
+ * @param pan Pan value (0=Left, 128=Center, 255=Right)
+ */
+void AudioMixer_SetPan(uint8_t channel, uint8_t pan);
+
+/**
  * @brief Trigger sample on channel
  * @param channel Channel number (0-3)
  * @param velocity Velocity (0-255)

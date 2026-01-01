@@ -12,6 +12,7 @@
 #define TIM2_CR1 (*(volatile uint32_t *)(TIM2_BASE + 0x00))
 #define TIM2_DIER (*(volatile uint32_t *)(TIM2_BASE + 0x0C))
 #define TIM2_SR (*(volatile uint32_t *)(TIM2_BASE + 0x10))
+#define TIM2_EGR (*(volatile uint32_t *)(TIM2_BASE + 0x14))
 #define TIM2_CNT (*(volatile uint32_t *)(TIM2_BASE + 0x24))
 #define TIM2_PSC (*(volatile uint32_t *)(TIM2_BASE + 0x28))
 #define TIM2_ARR (*(volatile uint32_t *)(TIM2_BASE + 0x2C))
@@ -56,7 +57,8 @@ void Clock_Init(void) {
 
   /* Configure TIM2 */
   TIM2_CR1 = 0;
-  TIM2_PSC = 95; /* 96MHz / 96 = 1MHz */
+  TIM2_CR1 |= (1 << 7); /* ARPE: Auto-reload preload enable */
+  TIM2_PSC = 95;        /* 96MHz / 96 = 1MHz */
   TIM2_ARR = calculate_period(current_bpm) - 1;
   TIM2_CNT = 0;
 
@@ -68,6 +70,10 @@ void Clock_Init(void) {
 
   /* Update registers */
   TIM2_CR1 |= TIM_CR1_URS;
+
+  /* Force update generation to load ARR shadow register immediately */
+  TIM2_EGR |= (1 << 0);   /* UG */
+  TIM2_SR &= ~TIM_SR_UIF; /* Clear update flag just in case */
 }
 
 void Clock_SetBPM(uint16_t bpm) {
@@ -79,23 +85,10 @@ void Clock_SetBPM(uint16_t bpm) {
 
   current_bpm = bpm;
 
-  /* Disable timer temporarily to safely update period */
-  uint8_t was_running = (TIM2_CR1 & TIM_CR1_CEN) != 0;
-
-  if (was_running) {
-    TIM2_CR1 &= ~TIM_CR1_CEN;
-  }
-
-  /* Update timer period */
+  /* Update timer period
+   * With ARPE enabled, this is buffered and takes effect at next update
+   */
   TIM2_ARR = calculate_period(bpm) - 1;
-
-  /* Reset counter to avoid missing updates */
-  TIM2_CNT = 0;
-
-  /* Re-enable timer if it was running */
-  if (was_running) {
-    TIM2_CR1 |= TIM_CR1_CEN;
-  }
 }
 
 uint16_t Clock_GetBPM(void) { return current_bpm; }

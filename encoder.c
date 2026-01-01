@@ -70,28 +70,13 @@ void Encoder_Init(void) {
   GPIOB_MODER &= ~((3UL << (ENC_A_PIN * 2)) | (3UL << (ENC_B_PIN * 2)) |
                    (3UL << (ENC_SW_PIN * 2)));
 
-  /* Enable pull-ups */
+  /* Enable pull-ups for Encoder A, B and Button */
   GPIOB_PUPDR &= ~((3UL << (ENC_A_PIN * 2)) | (3UL << (ENC_B_PIN * 2)) |
                    (3UL << (ENC_SW_PIN * 2)));
   GPIOB_PUPDR |= ((1UL << (ENC_A_PIN * 2)) | (1UL << (ENC_B_PIN * 2)) |
                   (1UL << (ENC_SW_PIN * 2)));
 
-  /* Configure EXTI for PB6 and PB7 */
-  /* EXTI6 and EXTI7 -> GPIOB (0001) */
-  SYSCFG_EXTICR2 &= ~((0xF << 8) | (0xF << 12));
-  SYSCFG_EXTICR2 |= ((1 << 8) | (1 << 12));
-
-  /* Enable interrupts on both edges for PB6 and PB7 */
-  EXTI_RTSR |= (1 << ENC_A_PIN) | (1 << ENC_B_PIN);
-  EXTI_FTSR |= (1 << ENC_A_PIN) | (1 << ENC_B_PIN);
-
-  /* Unmask EXTI6 and EXTI7 */
-  EXTI_IMR |= (1 << ENC_A_PIN) | (1 << ENC_B_PIN);
-
-  /* Enable EXTI9_5 interrupt in NVIC (IRQ 23) */
-  NVIC_ISER0 |= (1 << 23);
-
-  /* Read initial state */
+  /* Note: Interrupt usage is managed by buttons.c, but GPIO config is here */
   uint8_t a = (GPIOB_IDR >> ENC_A_PIN) & 1;
   last_a = a;
 }
@@ -105,94 +90,51 @@ void Encoder_SetLimits(int32_t min, int32_t max) {
   encoder_max = max;
 }
 
-uint8_t Encoder_ButtonPressed(void) {
-  return !((GPIOB_IDR >> ENC_SW_PIN) & 1); /* Active low */
-}
-
-uint8_t Encoder_ButtonClicked(void) {
-  if (button_clicked) {
-    button_clicked = 0;
-    return 1;
-  }
-  return 0;
-}
-
 int32_t Encoder_GetIncrementStep(void) { return increment_step; }
 
-/**
- * @brief EXTI9_5 interrupt handler (handles EXTI6 and EXTI7)
- */
-void EXTI9_5_IRQHandler(void) {
-  /* Check if EXTI6 or EXTI7 triggered */
-  if (EXTI_PR & ((1 << ENC_A_PIN) | (1 << ENC_B_PIN))) {
-    /* Clear pending flags */
-    EXTI_PR = (1 << ENC_A_PIN) | (1 << ENC_B_PIN);
-
-    /* Small delay for debouncing */
-    delay_us(100);
-
-    /* Read current state */
-    uint8_t a = (GPIOB_IDR >> ENC_A_PIN) & 1;
-    uint8_t b = (GPIOB_IDR >> ENC_B_PIN) & 1;
-
-    /* Detect on both rising and falling edges of A
-     * This gives one count per detent (click)
-     *
-     * Rising edge (0->1): If B=1, CW; If B=0, CCW
-     * Falling edge (1->0): If B=0, CW; If B=1, CCW
-     */
-    if (a != last_a) {
-      if (a == 1) {
-        /* Rising edge on A */
-        if (b == 1) {
-          encoder_value += increment_step; /* CW */
-        } else {
-          encoder_value -= increment_step; /* CCW */
-        }
-      } else {
-        /* Falling edge on A */
-        if (b == 0) {
-          encoder_value += increment_step; /* CW */
-        } else {
-          encoder_value -= increment_step; /* CCW */
-        }
-      }
-
-      /* Apply limits */
-      if (encoder_value < encoder_min)
-        encoder_value = encoder_min;
-      if (encoder_value > encoder_max)
-        encoder_value = encoder_max;
-
-      last_a = a;
-    }
+void Encoder_ToggleIncrement(void) {
+  if (increment_step == 1) {
+    increment_step = 10;
+  } else {
+    increment_step = 1;
   }
 }
 
 /**
- * @brief Check button in main loop (not in ISR for better debouncing)
+ * @brief Handle rotation logic (called from EXTI ISR in buttons.c)
  */
-void Encoder_UpdateButton(void) {
-  static uint32_t debounce_counter = 0;
+void Encoder_HandleRotation(void) {
+  /* Small delay for debouncing */
+  delay_us(100);
 
-  uint8_t button = !((GPIOB_IDR >> ENC_SW_PIN) & 1); /* Active low */
+  /* Read current state */
+  uint8_t a = (GPIOB_IDR >> ENC_A_PIN) & 1;
+  uint8_t b = (GPIOB_IDR >> ENC_B_PIN) & 1;
 
-  if (button && !last_button_state) {
-    /* Button just pressed - debounce */
-    debounce_counter++;
-    if (debounce_counter > 10) {
-      /* Toggle increment step */
-      if (increment_step == 1) {
-        increment_step = 10;
+  /* Detect on both rising and falling edges of A */
+  if (a != last_a) {
+    if (a == 1) {
+      /* Rising edge on A */
+      if (b == 1) {
+        encoder_value += increment_step; /* CW */
       } else {
-        increment_step = 1;
+        encoder_value -= increment_step; /* CCW */
       }
-      button_clicked = 1;
-      debounce_counter = 0;
-      last_button_state = 1;
+    } else {
+      /* Falling edge on A */
+      if (b == 0) {
+        encoder_value += increment_step; /* CW */
+      } else {
+        encoder_value -= increment_step; /* CCW */
+      }
     }
-  } else if (!button) {
-    debounce_counter = 0;
-    last_button_state = 0;
+
+    /* Apply limits */
+    if (encoder_value < encoder_min)
+      encoder_value = encoder_min;
+    if (encoder_value > encoder_max)
+      encoder_value = encoder_max;
+
+    last_a = a;
   }
 }

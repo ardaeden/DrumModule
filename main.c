@@ -116,7 +116,7 @@ void SystemClock_Config(void) {
 /* Private function prototypes */
 static void LoadTestPattern(void);
 static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset);
-static void OnButtonPress(uint8_t pressed);
+static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
 
 /* Global state for button callback */
 static volatile uint8_t is_playing = 0;
@@ -196,7 +196,7 @@ int main(void) {
 
   /* Initialize button with hardware interrupt */
   Button_Init();
-  Button_SetCallback(OnButtonPress);
+  Button_SetCallback(OnButtonEvent);
 
   /* Boot in STOPPED state */
   ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
@@ -207,8 +207,7 @@ int main(void) {
 
   while (1) {
 
-    /* Update encoder button state */
-    Encoder_UpdateButton();
+    /* Buttons are handled by interrupts (PA0 and PB8) */
 
     /* Update BPM from encoder */
     int32_t encoder_val = Encoder_GetValue();
@@ -312,19 +311,24 @@ static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset) {
 }
 
 /**
- * @brief Button press callback (called from interrupt)
+ * @brief Button event callback
  */
-static void OnButtonPress(uint8_t pressed) {
+static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   if (pressed) {
-    /* Toggle play/stop */
-    is_playing = !is_playing;
-    if (is_playing) {
-      Sequencer_Start();
-      ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
-    } else {
-      Sequencer_Stop();
-      GPIOC_ODR |= (1 << 13); /* Turn off LED */
-      ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+    if (button_id == BUTTON_START) {
+      /* Toggle play/stop */
+      is_playing = !is_playing;
+      if (is_playing) {
+        Sequencer_Start();
+        ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
+      } else {
+        Sequencer_Stop();
+        GPIOC_ODR |= (1 << 13); /* Turn off LED */
+        ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+      }
+    } else if (button_id == BUTTON_ENCODER) {
+      /* Toggle encoder increment */
+      Encoder_ToggleIncrement();
     }
   }
 }

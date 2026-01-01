@@ -30,18 +30,6 @@ void Encoder_SetValue(int32_t value);
 void Encoder_SetLimits(int32_t min, int32_t max);
 
 /**
- * @brief Check if button is pressed
- * @return 1 if pressed, 0 if not
- */
-uint8_t Encoder_ButtonPressed(void);
-
-/**
- * @brief Check if button was clicked (press and release)
- * @return 1 if clicked, 0 if not (clears flag on read)
- */
-uint8_t Encoder_ButtonClicked(void);
-
-/**
  * @brief Get current increment step (1 or 10)
  * @return Current increment step value
  */
@@ -50,6 +38,14 @@ int32_t Encoder_GetIncrementStep(void);
 /**
  * @brief Update button state (call from main loop)
  */
-void Encoder_UpdateButton(void);
+/**
+ * @brief Handle rotation logic (called from EXTI dispatcher)
+ */
+void Encoder_HandleRotation(void);
+
+/**
+ * @brief Toggle increment step (1x/10x)
+ */
+void Encoder_ToggleIncrement(void);
 
 #endif

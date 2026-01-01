@@ -3,11 +3,16 @@
 
 #include <stdint.h>
 
+/* Button IDs */
+#define BUTTON_START 0
+#define BUTTON_ENCODER 1
+
 /**
  * @brief Button event callback type
+ * @param button_id ID of the button (BUTTON_START or BUTTON_ENCODER)
  * @param pressed 1 if button pressed, 0 if released
  */
-typedef void (*ButtonCallback)(uint8_t pressed);
+typedef void (*ButtonCallback)(uint8_t button_id, uint8_t pressed);
 
 /**
  * @brief Initialize button with hardware interrupt

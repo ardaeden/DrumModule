@@ -32,13 +32,13 @@ This project uses the STM32F411CEU6 "Black Pill" board.
 
 *Note: You MUST configure your PCM5102A module to generate its own system clock (Internal PLL).*
 
-### MH-SD Card Module (SPI1 - Shared)
+### MH-SD Card Module (SPI3)
 | Interface Pin | STM32 Pin | Function | Notes |
 |:---:|:---:|---|---|
-| **CS** | **PB0** | Chip Select | |
-| **SCK** | **PA5** | SPI1_SCK | Shared with Display |
-| **MOSI** | **PA7** | SPI1_MOSI | Shared with Display |
-| **MISO** | **PA6** | SPI1_MISO | |
+| **CS** | **PB0** | SPI3_NSS (Soft) | Chip Select |
+| **SCK** | **PB3** | SPI3_SCK | **Requires JTAG Disable** |
+| **MOSI** | **PB5** | SPI3_MOSI | **Requires JTAG Disable** |
+| **MISO** | **PB4** | SPI3_MISO | **Requires JTAG Disable** |
 | **VCC** | **5V** | Power | |
 | **GND** | **GND** | Ground | |
 

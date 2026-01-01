@@ -1,5 +1,6 @@
 #include "audio_synth.h"
 #include "dma.h"
+#include "fat32.h"
 #include "i2s.h"
 #include "spi.h"
 #include "st7789.h"
@@ -118,8 +119,16 @@ int main(void) {
   SPI_Init();
   ST7789_Init();
 
-  /* Initialize Visualizer (Draws Hello World) */
-  Visualizer_Init();
+  /* Initialize SD card and display file list */
+  static FAT32_FileEntry files[FAT32_MAX_FILES];
+  int file_count = -1;
+
+  if (FAT32_Init() == 0) {
+    file_count = FAT32_ListRootFiles(files, FAT32_MAX_FILES);
+  }
+
+  /* Display file list (or error) */
+  Visualizer_ShowFileList(files, file_count);
 
   /* Initialize Audio */
   AudioSynth_Init();

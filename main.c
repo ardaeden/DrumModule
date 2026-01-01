@@ -1,4 +1,5 @@
 #include "audio_mixer.h"
+#include "buttons.h"
 #include "dma.h"
 #include "encoder.h"
 #include "fat32.h"
@@ -115,13 +116,12 @@ void SystemClock_Config(void) {
 /* Private function prototypes */
 static void LoadTestPattern(void);
 static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset);
+static void OnButtonPress(uint8_t pressed);
+
+/* Global state for button callback */
+static volatile uint8_t is_playing = 0;
 
 int main(void) {
-  /* Initialize PA0 (User Button) as Input with Pull-Down */
-  RCC_AHB1ENR |= (1 << 0);          /* GPIOA */
-  GPIOA_MODER &= ~(3UL << (0 * 2)); /* Input */
-  GPIOA_PUPDR &= ~(3UL << (0 * 2));
-  GPIOA_PUPDR |= (2UL << (0 * 2)); /* Pull-Down */
 
   /* Initialize LED on PC13 for status indication */
   RCC_AHB1ENR |= (1 << 2);
@@ -194,41 +194,18 @@ int main(void) {
     I2S_Start();
   }
 
+  /* Initialize button with hardware interrupt */
+  Button_Init();
+  Button_SetCallback(OnButtonPress);
+
   /* Boot in STOPPED state */
   ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
-  uint8_t is_playing = 0;
-  uint8_t btn_prev = 0;
-  uint32_t btn_debounce = 0;
 
   uint32_t last_step = 0xFF;
   int32_t last_encoder = 0;
   int32_t last_increment = 1;
 
   while (1) {
-    /* Poll User Button (PA0) */
-    uint8_t btn_curr = (GPIOA_IDR & (1 << 0)) ? 1 : 0;
-    if (btn_curr != btn_prev) {
-      if (btn_debounce > 2000) { /* Simple debounce counter */
-        if (btn_curr) {
-          /* Button Pressed: Toggle Play/Stop */
-          is_playing = !is_playing;
-          if (is_playing) {
-            Sequencer_Start();
-            ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
-          } else {
-            Sequencer_Stop();
-            /* Turn off LED when stopped */
-            GPIOC_ODR |= (1 << 13);
-            ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
-          }
-          btn_debounce = 0;
-        }
-      }
-    } else {
-      if (btn_debounce < 0xFFFFFFFF)
-        btn_debounce++;
-    }
-    btn_prev = btn_curr;
 
     /* Update encoder button state */
     Encoder_UpdateButton();
@@ -333,5 +310,23 @@ static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset) {
              (unsigned long)drumset->lengths[i]);
     ST7789_WriteString(10, 160 + i * 15, buf,
                        drumset->lengths[i] > 1000 ? GREEN : RED, BLACK, 1);
+  }
+}
+
+/**
+ * @brief Button press callback (called from interrupt)
+ */
+static void OnButtonPress(uint8_t pressed) {
+  if (pressed) {
+    /* Toggle play/stop */
+    is_playing = !is_playing;
+    if (is_playing) {
+      Sequencer_Start();
+      ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
+    } else {
+      Sequencer_Stop();
+      GPIOC_ODR |= (1 << 13); /* Turn off LED */
+      ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+    }
   }
 }

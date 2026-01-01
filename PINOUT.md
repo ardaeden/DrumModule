@@ -50,5 +50,5 @@ This project uses the STM32F411CEU6 "Black Pill" board.
 ### Other
 - **User LED**: PC13 (Active Low)
 - **User Button**: PB8 (Encoder Switch) - BPM/Menu
-- **Start/Stop Button**: PA0 (Onboard Key) - Active High
+- **Start/Stop Button**: PA0 (Onboard Key) - Active Low
 - **Debug**: SWDIO (PA13), SWCLK (PA14)

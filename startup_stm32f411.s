@@ -153,7 +153,15 @@ g_pfnVectors:
   .word  EXTI15_10_IRQHandler
   .word  RTC_Alarm_IRQHandler
   .word  OTG_FS_WKUP_IRQHandler
-  /* External Interrupts */
+  .word  0
+  .word  0
+  .word  0
+  .word  0
+  .word  DMA1_Stream7_IRQHandler
+  .word  0
+  .word  SDIO_IRQHandler
+  .word  TIM5_IRQHandler
+  .word  SPI3_IRQHandler
 
 /*******************************************************************************
 *
@@ -303,4 +311,16 @@ g_pfnVectors:
   
   .weak      OTG_FS_WKUP_IRQHandler
   .thumb_set OTG_FS_WKUP_IRQHandler,Default_Handler
+
+  .weak      DMA1_Stream7_IRQHandler
+  .thumb_set DMA1_Stream7_IRQHandler,Default_Handler
+
+  .weak      SDIO_IRQHandler
+  .thumb_set SDIO_IRQHandler,Default_Handler
+
+  .weak      TIM5_IRQHandler
+  .thumb_set TIM5_IRQHandler,Default_Handler
+  
+  .weak      SPI3_IRQHandler
+  .thumb_set SPI3_IRQHandler,Default_Handler
 

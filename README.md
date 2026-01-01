@@ -85,6 +85,7 @@ make flash
 DrumModule/
 ├── main.c              # Main application
 ├── encoder.c/h         # Rotary encoder driver
+├── buttons.c/h         # Interrupt-based button driver
 ├── sequencer_clock.c/h # 24 PPQN clock system
 ├── sequencer.c/h       # Sequencer engine
 ├── st7789.c/h          # Display driver
@@ -92,8 +93,8 @@ DrumModule/
 ├── sdcard_spi.c/h      # SPI3 driver for SD
 ├── sdcard.c/h          # SD card protocol
 ├── fat32.c/h           # FAT32 filesystem
-├── i2s.c/h             # I2S audio (planned)
-├── dma.c/h             # DMA for audio (planned)
+├── i2s.c/h             # I2S audio driver
+├── dma.c/h             # DMA for audio
 └── Makefile            # Build configuration
 ```
 
@@ -188,6 +189,6 @@ This project was developed with assistance from **Google Gemini 2.0 Flash (Think
 
 ---
 
-**Status**: Phase 2 Complete ✅ - Production Ready  
-**Binary Size**: 14660 bytes  
-**Latest Commit**: 4c7e53d (Code cleanup)
+**Status**: Phase 3 Started 🚀  
+**Binary Size**: 15356 bytes  
+**Latest Commit**: 167fea3 (Start/Stop with Interrupts)

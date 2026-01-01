@@ -253,9 +253,11 @@ int main(void) {
                Sequencer_GetStepCount());
       ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
 
-      /* Blink LED on step 0 */
-      if (step == 0) {
-        GPIOC_ODR ^= (1 << 13);
+      /* Blink LED on quarter notes (steps 0, 4, 8, 12) */
+      if ((step % 4) == 0) {
+        GPIOC_ODR &= ~(1 << 13); /* Turn ON (Active Low) */
+      } else {
+        GPIOC_ODR |= (1 << 13); /* Turn OFF */
       }
 
       last_step = step;

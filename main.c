@@ -95,7 +95,7 @@ void SystemClock_Config(void) {
 /* Private function prototypes */
 static void LoadTestPattern(void);
 static void DrawMainScreen(Drumset *drumset);
-static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset);
+static void UpdateBlinker(uint8_t channel, uint8_t active);
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
 
 /* Global state for display and control */
@@ -165,7 +165,7 @@ int main(void) {
       /* Reset any active blinkers without full screen redraw */
       for (int i = 0; i < NUM_CHANNELS; i++) {
         if (channel_states[i]) {
-          UpdateBlinker(i, 0, &drumset);
+          UpdateBlinker(i, 0);
           channel_states[i] = 0;
         }
       }
@@ -218,7 +218,7 @@ int main(void) {
           uint8_t velocity = Sequencer_GetStep(i, step);
           uint8_t active = (velocity > 0);
           if (active != channel_states[i]) {
-            UpdateBlinker(i, active, &drumset);
+            UpdateBlinker(i, active);
             channel_states[i] = active;
           }
         }
@@ -336,9 +336,8 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
 }
 
-static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset) {
+static void UpdateBlinker(uint8_t channel, uint8_t active) {
   uint16_t x, y, base_color;
-  (void)drumset;
 
   switch (channel) {
   case 0: /* Red */

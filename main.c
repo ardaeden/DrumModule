@@ -160,7 +160,7 @@ int main(void) {
       last_step = 0xFF;
 
       /* Reset STEP counter display */
-      ST7789_WriteString(180, 10, "STEP: 01/16", WHITE, BLACK, 2);
+      ST7789_WriteString(240, 10, "01/16      ", WHITE, BLACK, 2);
 
       /* Reset any active blinkers without full screen redraw */
       for (int i = 0; i < NUM_CHANNELS; i++) {
@@ -177,7 +177,7 @@ int main(void) {
     if (is_playing != last_playing) {
       const char *status = is_playing ? "PLAYING" : "STOPPED";
       uint16_t status_color = is_playing ? GREEN : RED;
-      ST7789_WriteString(10, 220, status, status_color, BLACK, 1);
+      ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
       last_playing = is_playing;
     }
 
@@ -190,8 +190,8 @@ int main(void) {
       char val_buf[16];
       snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
       uint16_t val_color = (Encoder_GetIncrementStep() == 10) ? MAGENTA : CYAN;
-      ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
-      ST7789_WriteString(70, 10, val_buf, val_color, BLACK, 2);
+      ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+      ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
     }
 
     /* Handle encoder increment step changes */
@@ -201,17 +201,17 @@ int main(void) {
       char val_buf[16];
       snprintf(val_buf, sizeof(val_buf), "%d ", (int)Encoder_GetValue());
       uint16_t val_color = (increment == 10) ? MAGENTA : CYAN;
-      ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
-      ST7789_WriteString(70, 10, val_buf, val_color, BLACK, 2);
+      ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+      ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
     }
 
     if (is_playing) {
       uint8_t step = Sequencer_GetCurrentStep();
       if (step != last_step) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "STEP: %02d/%02d", step + 1,
+        snprintf(buf, sizeof(buf), "%02d/%02d      ", step + 1,
                  Sequencer_GetStepCount());
-        ST7789_WriteString(180, 10, buf, WHITE, BLACK, 2);
+        ST7789_WriteString(240, 10, buf, WHITE, BLACK, 2);
 
         /* Update blinkers based on pattern triggers */
         for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
@@ -238,82 +238,66 @@ int main(void) {
 }
 
 static void LoadTestPattern(void) {
-  /* Clear any existing steps first (though unnecessary on startup, good
-   * practice)
-   */
+  /* Clear pattern */
   Sequencer_ClearPattern();
 
-  /* KICK (Ch 0): Syncopated driving beat
-   * 1   e   &   a   2   e   &   a   3   e   &   a   4   e   &   a
-   * X           x       X           x           X       X
+  /* KICK (Ch 0): Minimal House (4-on-the-floor)
+   * 1 . . . 2 . . . 3 . . . 4 . . .
    */
-  Sequencer_SetStep(0, 0, 255);  // Downbeat
-  Sequencer_SetStep(0, 3, 100);  // Ghost pickup
-  Sequencer_SetStep(0, 7, 220);  // Syncopated kick
-  Sequencer_SetStep(0, 10, 230); // Driving kick
-  Sequencer_SetStep(0, 14, 150); // Double kick end
+  Sequencer_SetStep(0, 0, 200);
+  Sequencer_SetStep(0, 4, 200);
+  Sequencer_SetStep(0, 8, 200);
+  Sequencer_SetStep(0, 12, 200);
 
-  /* SNARE (Ch 1): Tight backbeat with ghost notes
-   * 1   e   &   a   2   e   &   a   3   e   &   a   4   e   &   a
-   *                     X                 x     X           x
+  /* SNARE (Ch 1): Classic Backbeat
+   * . . . . X . . . . . . . X . . .
    */
-  Sequencer_SetStep(1, 4, 255);  // Backbeat
-  Sequencer_SetStep(1, 9, 40);   // Ghost
-  Sequencer_SetStep(1, 12, 255); // Backbeat
-  Sequencer_SetStep(1, 15, 60);  // Ghost
+  Sequencer_SetStep(1, 4, 255);  // Backbeat on 2
+  Sequencer_SetStep(1, 12, 255); // Backbeat on 4
 
-  /* HATS (Ch 2): 16th note groove with accents on off-beats
-   * Dynamics are key here.
+  /* HATS (Ch 2): Pure Off-beat Open Hat
+   * . . X . . . X . . . X . . . X .
    */
-  for (int i = 0; i < 16; i++) {
-    if (i % 4 == 2) {
-      Sequencer_SetStep(2, i, 200); // Open hat feel on &s
-    } else if (i % 2 == 0) {
-      Sequencer_SetStep(2, i, 80); // Downbeats quiet
-    } else {
-      Sequencer_SetStep(2, i, 40); // Off-beats very quiet
-    }
-  }
+  Sequencer_SetStep(2, 2, 180);
+  Sequencer_SetStep(2, 6, 180);
+  Sequencer_SetStep(2, 10, 180);
+  Sequencer_SetStep(2, 14, 180);
 
-  /* CLAP (Ch 3): Layered on the 4 with a pre-clap
-   * Pan slightly right
+  /* CLAP (Ch 3): Deep Dub Echo feel
+   * One hit with delay simulation
    */
-  AudioMixer_SetPan(3, 160);
-  Sequencer_SetStep(3, 11, 80);  // Anticipation
-  Sequencer_SetStep(3, 12, 255); // Big clap layered with snare
+  AudioMixer_SetPan(3, 100);    // Left-ish
+  Sequencer_SetStep(3, 4, 200); // The Hit
+  Sequencer_SetStep(3, 7, 60);  // Echo 1
+  Sequencer_SetStep(3, 10, 30); // Echo 2
 
-  /* PERC 1 (Ch 4): Poly-rhythmic pulse
-   * Pan Right (200)
+  /* PERC 1 (Ch 4): Minimal Glitch
+   * Random-ish sparse hits
    */
-  AudioMixer_SetPan(4, 220);
-  Sequencer_SetStep(4, 2, 150);
-  Sequencer_SetStep(4, 5, 120);
-  Sequencer_SetStep(4, 8, 150);
-  Sequencer_SetStep(4, 11, 120);
-  Sequencer_SetStep(4, 14, 150);
+  AudioMixer_SetPan(4, 220); // Right
+  Sequencer_SetStep(4, 11, 150);
+  Sequencer_SetStep(4, 15, 100);
 
-  /* PERC 2 (Ch 5): Call and response
-   * Pan Left (40)
+  /* PERC 2 (Ch 5): Sub assitance / Texture
+   * Just one texture hit
    */
-  AudioMixer_SetPan(5, 40);
-  Sequencer_SetStep(5, 0, 180);  // Hit on 1
-  Sequencer_SetStep(5, 6, 120);  // Response
-  Sequencer_SetStep(5, 13, 140); // Response to clap
+  AudioMixer_SetPan(5, 128);
+  Sequencer_SetStep(5, 0, 80);
 }
 
 static void DrawMainScreen(Drumset *drumset) {
   ST7789_Fill(BLACK);
 
-  ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
+  ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
   char val_buf[16];
   snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
-  ST7789_WriteString(70, 10, val_buf, CYAN, BLACK, 2);
-  ST7789_WriteString(180, 10, "STEP: 01/16", WHITE, BLACK, 2);
+  ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+  ST7789_WriteString(240, 10, "01/16", WHITE, BLACK, 2);
 
   /* Status indicator */
   const char *status = is_playing ? "PLAYING" : "STOPPED";
   uint16_t status_color = is_playing ? GREEN : RED;
-  ST7789_WriteString(10, 220, status, status_color, BLACK, 1);
+  ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* 3x2 Grid Layout
    * Width 90px, Height 80px

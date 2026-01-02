@@ -1,148 +1,90 @@
 # STM32F411 Eurorack Drum Sequencer
 
-A 4-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on the STM32F411CEU6 "Black Pill" board.
+A 6-channel, 16-step drum sequencer for Eurorack modular synthesizers, built on the STM32F411CEU6 "Black Pill" board.
 
 ## Features
 
-### Phase 2 Complete ✅
-- **4-Channel Drum Sequencer**
-  - 16 steps per track
-  - Velocity control per step
-  - Ghost notes and dynamics
-  
-- **High-Quality Audio**
-  - 44.1kHz stereo output via I2S
-  - PCM5102A DAC integration
-  - 4-channel mixer with panning
-  - Glitch-free playback
-  
-- **WAV Sample Playback**
-  - Load samples from SD card (FAT32)
-  - Multi-sector file reading
-  - Supports: KICK.WAV, SNARE.WAV, HATS.WAV, CLAP.WAV
-  
-- **Precise Timing**
-  - 24 PPQN clock system
-  - BPM control via rotary encoder (40-300 BPM)
-  - Smooth BPM changes without glitches
+### Audio Engine 🎧
+- **6-Channel Mixing**: Kick, Snare, Hats, Clap, Perc1, Perc2.
+- **WAV Playback**: Loads samples from SD Card (FAT32).
+- **High Fidelity**: 44.1kHz stereo output via I2S (PCM5102A).
+- **Dynamic Mixing**: Per-channel volume and panning.
 
-- **Display**
-  - ST7789 320×240 color LCD
-  - Real-time status and file listing
+### Sequencer 🎹
+- **16 Steps**: Classic step sequencing.
+- **24 PPQN Clock**: High-resolution internal clock.
+- **Hardware Sync Output**: 24 PPQN 50% duty cycle clock on **PA15**.
+- **Adjustable BPM**: 40-300 BPM via rotary encoder.
 
-### Future Enhancements
-- Interactive grid UI for pattern editing
-- Pattern save/load functionality
-- Additional hardware controls
+### User Interface 🖥️
+- **Display**: ST7789 320×240 IPS LCD.
+- **Real-time Feedback**: 
+  - Dynamic Step Counter.
+  - Active Step Visualizers.
+  - Large Status Indicator (PLAYING/STOPPED).
 
 ## Hardware
 
-### MCU
-- **STM32F411CEU6** "Black Pill"
-  - 100MHz ARM Cortex-M4F
-  - 128KB RAM
-  - 512KB Flash
+### Microcontroller
+- **STM32F411CEU6** "Black Pill" (100MHz Cortex-M4F, 128KB RAM).
 
-### Peripherals
-- **Display**: ST7789V (SPI1)
-- **Audio DAC**: PCM5102A (I2S2) - *planned*
-- **Storage**: MicroSD Card (SPI3)
-- **Input**: Rotary Encoder (PB6, PB7, PB8)
-
-### Pin Assignment
+### Pinout
 | Pin | Function | Notes |
 |-----|----------|-------|
-| PA1-PA4 | Display Control | CS, DC, RES, BLK |
+| **PA15** | **Clock Out** | **TIM2_CH1 PWM (24 PPQN)** |
+| PA1-PA4 | Display | CS, DC, RES, BLK |
 | PA5, PA7 | SPI1 | Display SCK, MOSI |
-| PB0 | SD Card CS | |
-| PB3-PB5 | SPI3 | SD Card (requires JTAG disable) |
+| PB0 | SD CS | Chip Select |
+| PB3-PB5 | SPI3 | SD Card (SCK, MISO, MOSI) |
 | PB6-PB8 | Encoder | A, B, Button |
-| PB10, PB12, PB15 | I2S2 | Audio (planned) |
-| PC13 | LED | Status indicator |
+| PB10,12,15| I2S2 | Audio DAC (LCK, BCK, DIN) |
+| PC13 | LED | Status Heartbeat |
 
-## Building
+## Getting Started
 
 ### Prerequisites
+- `arm-none-eabi-gcc` toolchain
+- `dfu-util` for flashing
+- `make`
+
+### Building
 ```bash
-arm-none-eabi-gcc
-make
-dfu-util
+make clean && make
 ```
 
-### Compile
-```bash
-make
-```
-
-### Flash
+### Flashing
+1. Put the device in DFU mode (Hold BOOT0, press NRST).
+2. Run:
 ```bash
 make flash
 ```
 
-## Project Structure
-
+## SD Card Structure
+Format SD card as **FAT32**.
 ```
-DrumModule/
-├── main.c              # Main application
-├── encoder.c/h         # Rotary encoder driver
-├── buttons.c/h         # Interrupt-based button driver
-├── sequencer_clock.c/h # 24 PPQN clock system
-├── sequencer.c/h       # Sequencer engine
-├── st7789.c/h          # Display driver
-├── spi.c/h             # SPI1 driver
-├── sdcard_spi.c/h      # SPI3 driver for SD
-├── sdcard.c/h          # SD card protocol
-├── fat32.c/h           # FAT32 filesystem
-├── i2s.c/h             # I2S audio driver
-├── dma.c/h             # DMA for audio
-└── Makefile            # Build configuration
+/
+└── DRUMSETS/
+    └── KIT001/
+        ├── KICK.WAV
+        ├── SNARE.WAV
+        ├── HATS.WAV
+        ├── CLAP.WAV
+        ├── PERC1.WAV
+        └── PERC2.WAV
 ```
+*Note: Samples must be 44.1kHz, 16-bit PCM Mono.*
 
-## Memory Usage
-
-```
-RAM:   ~110KB used (100KB for WAV samples)
-Flash: ~14.6KB code
-Samples: 4 channels × 25KB each = 100KB
-```
-
-## Development
-
-### Branch Structure
-- `main` - Stable releases
-- `feature/sequencer` - Active development
-
-### Current Status
-✅ Phase 2 Complete - Production Ready
-� Binary Size: 14660 bytes
-🎵 Audio: Perfect 44.1kHz playback
-
-
+## Development Status
+✅ **Phase 3 Complete**:
+- [x] Expanded to 6 Channels.
+- [x] Hardware Clock Output implemented.
+- [x] Codebase optimized and cleaned.
+- [x] UI refined (Right-aligned counter, readable fonts).
 
 ## Credits
 
 ### Design & Direction
-**Arda Eden** - Main Designer, Project Lead, and Prompter
-- System architecture and feature design
-- Hardware selection and integration
-- Project vision and requirements
-- Testing and validation
+**Arda Eden** - Main Designer, Project Lead.
 
 ### Implementation
-**Google Gemini 2.0 Flash (Thinking - Experimental)** - AI Coder
-- Complete codebase implementation
-- Driver development (I2S, DMA, SPI, Encoder, Display)
-- Audio engine and sequencer logic
-- FAT32 filesystem and WAV loading
-- Debugging and optimization
-- Documentation
-
-## License
-
-*[Add your license here]*
-
----
-
-**Status**: Phase 3 Started 🚀  
-**Binary Size**: 15356 bytes  
-**Latest Commit**: 167fea3 (Start/Stop with Interrupts)
+**Google Gemini 2.0 Flash (Thinking - Experimental)** - AI Coder.

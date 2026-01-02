@@ -24,8 +24,8 @@ typedef struct {
 /* Static buffer for reading sectors */
 static uint8_t sector_buffer[512];
 
-/* Static sample buffers (4 channels × 25KB each = 100KB) */
-#define MAX_SAMPLE_SIZE (25 * 1024 / 2) // 25KB = 12500 samples
+/* Static sample buffers (6 channels x 16KB each = 96KB) */
+#define MAX_SAMPLE_SIZE (16 * 1024 / 2) // 16KB = 8192 samples
 static int16_t sample_buffers[NUM_CHANNELS][MAX_SAMPLE_SIZE];
 
 /**

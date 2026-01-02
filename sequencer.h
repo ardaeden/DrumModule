@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NUM_CHANNELS 4
+#define NUM_CHANNELS 6
 #define MAX_STEPS 32
 
 /**

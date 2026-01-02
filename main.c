@@ -261,6 +261,20 @@ static void LoadTestPattern(void) {
   Sequencer_SetStep(3, 12, 255);
   Sequencer_SetStep(3, 14, 60);
   Sequencer_SetStep(3, 15, 30);
+
+  /* Perc 1 (Channel 4) */
+  AudioMixer_SetPan(4, 200); // Pan Right
+  Sequencer_SetStep(4, 3, 150);
+  Sequencer_SetStep(4, 7, 150);
+  Sequencer_SetStep(4, 11, 150);
+  Sequencer_SetStep(4, 15, 150);
+
+  /* Perc 2 (Channel 5) */
+  AudioMixer_SetPan(5, 40); // Pan Left
+  Sequencer_SetStep(5, 1, 100);
+  Sequencer_SetStep(5, 4, 100);
+  Sequencer_SetStep(5, 9, 100);
+  Sequencer_SetStep(5, 13, 100);
 }
 
 static void DrawMainScreen(Drumset *drumset) {
@@ -277,25 +291,41 @@ static void DrawMainScreen(Drumset *drumset) {
   uint16_t status_color = is_playing ? GREEN : RED;
   ST7789_WriteString(10, 220, status, status_color, BLACK, 1);
 
-  /* Square 0: Top Left */
-  ST7789_FillRect(10, 40, 145, 80, BLACK);
-  ST7789_DrawThickFrame(10, 40, 145, 80, 2, RED);
-  ST7789_WriteString(20, 50, drumset->sample_names[0], RED, BLACK, 1);
+  /* 3x2 Grid Layout
+   * Width 90px, Height 80px
+   * Row 1 Y=40, Row 2 Y=130
+   * Col 1 X=10, Col 2 X=110, Col 3 X=210
+   */
 
-  /* Square 1: Top Right */
-  ST7789_FillRect(165, 40, 145, 80, BLACK);
-  ST7789_DrawThickFrame(165, 40, 145, 80, 2, GREEN);
-  ST7789_WriteString(175, 50, drumset->sample_names[1], GREEN, BLACK, 1);
+  /* Channel 0: Red */
+  ST7789_FillRect(10, 40, 90, 80, BLACK);
+  ST7789_DrawThickFrame(10, 40, 90, 80, 2, RED);
+  ST7789_WriteString(15, 50, drumset->sample_names[0], RED, BLACK, 1);
 
-  /* Square 2: Bottom Left */
-  ST7789_FillRect(10, 130, 145, 80, BLACK);
-  ST7789_DrawThickFrame(10, 130, 145, 80, 2, YELLOW);
-  ST7789_WriteString(20, 140, drumset->sample_names[2], YELLOW, BLACK, 1);
+  /* Channel 1: Green */
+  ST7789_FillRect(110, 40, 90, 80, BLACK);
+  ST7789_DrawThickFrame(110, 40, 90, 80, 2, GREEN);
+  ST7789_WriteString(115, 50, drumset->sample_names[1], GREEN, BLACK, 1);
 
-  /* Square 3: Bottom Right */
-  ST7789_FillRect(165, 130, 145, 80, BLACK);
-  ST7789_DrawThickFrame(165, 130, 145, 80, 2, MAGENTA);
-  ST7789_WriteString(175, 140, drumset->sample_names[3], MAGENTA, BLACK, 1);
+  /* Channel 2: Yellow */
+  ST7789_FillRect(210, 40, 90, 80, BLACK);
+  ST7789_DrawThickFrame(210, 40, 90, 80, 2, YELLOW);
+  ST7789_WriteString(215, 50, drumset->sample_names[2], YELLOW, BLACK, 1);
+
+  /* Channel 3: Magenta */
+  ST7789_FillRect(10, 130, 90, 80, BLACK);
+  ST7789_DrawThickFrame(10, 130, 90, 80, 2, MAGENTA);
+  ST7789_WriteString(15, 140, drumset->sample_names[3], MAGENTA, BLACK, 1);
+
+  /* Channel 4: Cyan */
+  ST7789_FillRect(110, 130, 90, 80, BLACK);
+  ST7789_DrawThickFrame(110, 130, 90, 80, 2, CYAN);
+  ST7789_WriteString(115, 140, drumset->sample_names[4], CYAN, BLACK, 1);
+
+  /* Channel 5: Orange */
+  ST7789_FillRect(210, 130, 90, 80, BLACK);
+  ST7789_DrawThickFrame(210, 130, 90, 80, 2, ORANGE);
+  ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
 }
 
 static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset) {
@@ -303,37 +333,48 @@ static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset) {
   (void)drumset;
 
   switch (channel) {
-  case 0:
+  case 0: /* Red */
     x = 10;
     y = 40;
     base_color = RED;
     break;
-  case 1:
-    x = 165;
+  case 1: /* Green */
+    x = 110;
     y = 40;
     base_color = GREEN;
     break;
-  case 2:
-    x = 10;
-    y = 130;
+  case 2: /* Yellow */
+    x = 210;
+    y = 40;
     base_color = YELLOW;
     break;
-  case 3:
-    x = 165;
+  case 3: /* Magenta */
+    x = 10;
     y = 130;
     base_color = MAGENTA;
+    break;
+  case 4: /* Cyan */
+    x = 110;
+    y = 130;
+    base_color = CYAN;
+    break;
+  case 5: /* Orange */
+    x = 210;
+    y = 130;
+    base_color = ORANGE;
     break;
   default:
     return;
   }
 
   uint16_t frame_color = active ? WHITE : base_color;
-  uint16_t thickness = active ? 6 : 2;
+  uint16_t thickness = active ? 4 : 2; // Reduced thickness for smaller boxes
 
-  ST7789_DrawThickFrame(x, y, 145, 80, thickness, frame_color);
+  ST7789_DrawThickFrame(x, y, 90, 80, thickness, frame_color);
 
+  // Clear inner frame when deactivated to remove thickness artifact
   if (!active) {
-    ST7789_DrawThickFrame(x + 2, y + 2, 141, 76, 4, BLACK);
+    ST7789_DrawThickFrame(x + 2, y + 2, 86, 76, 2, BLACK);
   }
 }
 

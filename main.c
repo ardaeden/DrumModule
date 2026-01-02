@@ -238,43 +238,67 @@ int main(void) {
 }
 
 static void LoadTestPattern(void) {
-  /* Kick pattern */
-  Sequencer_SetStep(0, 0, 255);
-  Sequencer_SetStep(0, 4, 255);
-  Sequencer_SetStep(0, 8, 255);
-  Sequencer_SetStep(0, 12, 255);
+  /* Clear any existing steps first (though unnecessary on startup, good
+   * practice)
+   */
+  Sequencer_ClearPattern();
 
-  /* Snare pattern */
-  Sequencer_SetStep(1, 4, 255);
-  Sequencer_SetStep(1, 12, 255);
+  /* KICK (Ch 0): Syncopated driving beat
+   * 1   e   &   a   2   e   &   a   3   e   &   a   4   e   &   a
+   * X           x       X           x           X       X
+   */
+  Sequencer_SetStep(0, 0, 255);  // Downbeat
+  Sequencer_SetStep(0, 3, 100);  // Ghost pickup
+  Sequencer_SetStep(0, 7, 220);  // Syncopated kick
+  Sequencer_SetStep(0, 10, 230); // Driving kick
+  Sequencer_SetStep(0, 14, 150); // Double kick end
 
-  /* Hats pattern */
-  Sequencer_SetStep(2, 2, 200);
-  Sequencer_SetStep(2, 6, 200);
-  Sequencer_SetStep(2, 10, 200);
-  Sequencer_SetStep(2, 14, 200);
+  /* SNARE (Ch 1): Tight backbeat with ghost notes
+   * 1   e   &   a   2   e   &   a   3   e   &   a   4   e   &   a
+   *                     X                 x     X           x
+   */
+  Sequencer_SetStep(1, 4, 255);  // Backbeat
+  Sequencer_SetStep(1, 9, 40);   // Ghost
+  Sequencer_SetStep(1, 12, 255); // Backbeat
+  Sequencer_SetStep(1, 15, 60);  // Ghost
 
-  /* Clap pattern with ghosts */
-  AudioMixer_SetPan(3, 80);
-  Sequencer_SetStep(3, 4, 255);
-  Sequencer_SetStep(3, 11, 40);
-  Sequencer_SetStep(3, 12, 255);
-  Sequencer_SetStep(3, 14, 60);
-  Sequencer_SetStep(3, 15, 30);
+  /* HATS (Ch 2): 16th note groove with accents on off-beats
+   * Dynamics are key here.
+   */
+  for (int i = 0; i < 16; i++) {
+    if (i % 4 == 2) {
+      Sequencer_SetStep(2, i, 200); // Open hat feel on &s
+    } else if (i % 2 == 0) {
+      Sequencer_SetStep(2, i, 80); // Downbeats quiet
+    } else {
+      Sequencer_SetStep(2, i, 40); // Off-beats very quiet
+    }
+  }
 
-  /* Perc 1 (Channel 4) */
-  AudioMixer_SetPan(4, 200); // Pan Right
-  Sequencer_SetStep(4, 3, 150);
-  Sequencer_SetStep(4, 7, 150);
-  Sequencer_SetStep(4, 11, 150);
-  Sequencer_SetStep(4, 15, 150);
+  /* CLAP (Ch 3): Layered on the 4 with a pre-clap
+   * Pan slightly right
+   */
+  AudioMixer_SetPan(3, 160);
+  Sequencer_SetStep(3, 11, 80);  // Anticipation
+  Sequencer_SetStep(3, 12, 255); // Big clap layered with snare
 
-  /* Perc 2 (Channel 5) */
-  AudioMixer_SetPan(5, 40); // Pan Left
-  Sequencer_SetStep(5, 1, 100);
-  Sequencer_SetStep(5, 4, 100);
-  Sequencer_SetStep(5, 9, 100);
-  Sequencer_SetStep(5, 13, 100);
+  /* PERC 1 (Ch 4): Poly-rhythmic pulse
+   * Pan Right (200)
+   */
+  AudioMixer_SetPan(4, 220);
+  Sequencer_SetStep(4, 2, 150);
+  Sequencer_SetStep(4, 5, 120);
+  Sequencer_SetStep(4, 8, 150);
+  Sequencer_SetStep(4, 11, 120);
+  Sequencer_SetStep(4, 14, 150);
+
+  /* PERC 2 (Ch 5): Call and response
+   * Pan Left (40)
+   */
+  AudioMixer_SetPan(5, 40);
+  Sequencer_SetStep(5, 0, 180);  // Hit on 1
+  Sequencer_SetStep(5, 6, 120);  // Response
+  Sequencer_SetStep(5, 13, 140); // Response to clap
 }
 
 static void DrawMainScreen(Drumset *drumset) {

@@ -117,53 +117,7 @@ Samples: 4 channels × 25KB each = 100KB
 � Binary Size: 14660 bytes
 🎵 Audio: Perfect 44.1kHz playback
 
-## AI Contributions
 
-This project was developed with assistance from **Google Gemini 2.0 Flash (Thinking - Experimental)** AI assistant. Key contributions include:
-
-### Architecture & Planning
-- System architecture design for 4-channel sequencer
-- Memory budget analysis and optimization
-- Pin assignment strategy
-- 24 PPQN clock timing calculations
-- Multi-phase implementation roadmap
-
-### Core Implementation
-- **Rotary Encoder Driver** (`encoder.c/h`)
-  - EXTI interrupt-based quadrature decoding
-  - Both-edge detection for accurate step counting
-  - Debounced button handling with x1/x10 toggle
-  - Fixed polarity and sensitivity issues
-
-- **Clock System** (`sequencer_clock.c/h`)
-  - TIM2-based 24 PPQN implementation
-  - Safe BPM changes without stopping sequencer
-  - Precise timing with 1MHz timer base
-  - Callback system for sequencer integration
-
-- **Sequencer Engine** (`sequencer.c/h`)
-  - Pattern storage (4 channels × 32 steps)
-  - Step counter with 16th note resolution
-  - Integration with clock callbacks
-  - Pattern editing API
-
-### Problem Solving
-- Fixed encoder counting by 2 (edge detection issue)
-- Corrected encoder polarity
-- Resolved sequencer stopping during rapid BPM changes
-- Optimized timer reload for stable operation
-
-### Code Quality
-- Comprehensive documentation and comments
-- Clean code structure and organization
-- Proper error handling
-- Memory-efficient implementation
-
-### Documentation
-- Implementation plans and walkthroughs
-- Pin assignment documentation
-- Build instructions
-- This README
 
 ## Credits
 

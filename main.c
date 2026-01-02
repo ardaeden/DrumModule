@@ -49,7 +49,6 @@
 
 /**
  * @brief System initialization required by startup code
- * @note Enables FPU for hardware floating point operations
  */
 void SystemInit(void) {
   /* Enable FPU: Set CP10 and CP11 to full access */
@@ -63,31 +62,18 @@ void _init(void) {}
 
 /**
  * @brief Configure system clocks
- * @details HSI (16MHz) -> PLL -> 96MHz SYSCLK
- *          PLLI2S -> 64MHz for I2S audio
  */
 void SystemClock_Config(void) {
-  /* Enable power interface clock */
   RCC_APB1ENR |= (1 << 28);
-
-  /* Set voltage regulator scale 1 for max performance */
   PWR_CR |= (3 << 14);
-
-  /* Enable HSI and wait for ready */
   RCC_CR |= RCC_CR_HSION;
   while (!(RCC_CR & RCC_CR_HSIRDY))
     ;
 
-  /* Configure Main PLL: HSI/16 * 192 / 2 = 96MHz */
   RCC_PLLCFGR = 16 | (192 << 6) | (0 << 16) | (0 << 22) | (4 << 24);
-
-  /* Configure PLLI2S for 44.1kHz audio: HSI/16 * 271 / 6 ≈ 45.17MHz */
   RCC_PLLI2SCFGR = (271 << 6) | (6 << 28);
-
-  /* Enable both PLLs */
   RCC_CR |= RCC_CR_PLLON | RCC_CR_PLLI2SON;
 
-  /* Wait for PLLs to lock with timeout */
   volatile uint32_t timeout = 0;
   while (!(RCC_CR & RCC_CR_PLLRDY) && timeout++ < 10000)
     ;
@@ -95,13 +81,9 @@ void SystemClock_Config(void) {
   while (!(RCC_CR & RCC_CR_PLLI2SRDY) && timeout++ < 10000)
     ;
 
-  /* Configure Flash: 3 wait states, enable caches and prefetch */
   FLASH_ACR = (1 << 8) | (1 << 9) | (1 << 10) | 3;
-
-  /* Set APB1 prescaler to /2 (48MHz max) */
   RCC_CFGR |= (4 << 10);
 
-  /* Switch to PLL as system clock */
   if (RCC_CR & RCC_CR_PLLRDY) {
     RCC_CFGR &= ~3UL;
     RCC_CFGR |= 2UL;
@@ -110,224 +92,264 @@ void SystemClock_Config(void) {
   }
 }
 
+/* Private function prototypes */
+static void LoadTestPattern(void);
+static void DrawMainScreen(Drumset *drumset);
+static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset);
+static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
+
+/* Global state for display and control */
+static volatile uint8_t is_playing = 0;
+static uint32_t last_step = 0xFF;
+static uint8_t channel_states[NUM_CHANNELS] = {0};
+static volatile uint8_t needs_ui_refresh = 0;
+
 /**
  * @brief Main application entry point
  */
-/* Private function prototypes */
-static void LoadTestPattern(void);
-static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset);
-static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
-
-/* Global state for button callback */
-static volatile uint8_t is_playing = 0;
-
 int main(void) {
-
-  /* Initialize LED on PC13 for status indication */
+  /* Initialize LED */
   RCC_AHB1ENR |= (1 << 2);
   GPIOC_MODER &= ~(3UL << (13 * 2));
   GPIOC_MODER |= (1UL << (13 * 2));
-  GPIOC_ODR &= ~(1UL << 13);
+  GPIOC_ODR |= (1UL << 13); /* OFF (Active Low) */
 
-  /* Configure system clocks */
   SystemClock_Config();
-
-  /* Initialize display */
   SPI_Init();
   ST7789_Init();
   ST7789_Fill(BLACK);
 
-  /* Initialize encoder */
   Encoder_Init();
-  Encoder_SetLimits(40, 300); /* BPM range */
-  Encoder_SetValue(120);      /* Default BPM */
+  Encoder_SetLimits(40, 300);
+  Encoder_SetValue(120);
 
-  /* Initialize sequencer */
   Sequencer_Init();
+  Button_Init();
+  Button_SetCallback(OnButtonEvent);
 
-  /* Initialize audio mixer */
   AudioMixer_Init();
 
-  /* Initialize SD card */
-  int sd_status = FAT32_Init();
-
-  /* List files for debugging */
-  FAT32_FileEntry files[FAT32_MAX_FILES];
-  int file_count = 0;
-  if (sd_status == 0) {
-    file_count = FAT32_ListRootFiles(files, FAT32_MAX_FILES);
-    if (file_count < 0) {
-      file_count = -999; // Error indicator
-    }
-  }
-
-  /* Load drumset (test drumset with silence for now) */
+  /* SD initialization and sample loading */
+  (void)FAT32_Init();
   static Drumset drumset;
   Drumset_Load("/DRUMSETS/KIT001", &drumset);
 
-  /* Set samples for mixer */
   for (int i = 0; i < NUM_CHANNELS; i++) {
     AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);
   }
 
-  /* Draw status screen */
-  DrawStatusScreen(sd_status, file_count, &drumset);
-
-  /* Show first 3 files if available */
-  if (sd_status == 0) {
-    for (int i = 0; i < file_count && i < 3; i++) {
-      ST7789_WriteString(10, 100 + i * 15, files[i].name, YELLOW, BLACK, 1);
-    }
-  }
-
-  /* Load test pattern */
-  LoadTestPattern();
-
-  /* Initialize audio hardware */
+  /* Start audio subsystem as early as possible for PLLI2S stability */
   int audio_status = I2S_Init();
   if (audio_status == 0) {
-    /* Start DMA with silence */
-    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++) {
+    for (int i = 0; i < AUDIO_BUFFER_SIZE; i++)
       audio_buffer[i] = 0;
-    }
     DMA_Init_I2S(audio_buffer, AUDIO_BUFFER_SIZE);
     I2S_Start();
   }
 
-  /* Initialize button with hardware interrupt */
-  Button_Init();
-  Button_SetCallback(OnButtonEvent);
+  DrawMainScreen(&drumset);
+  LoadTestPattern();
 
-  /* Boot in STOPPED state */
-  ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
-
-  uint32_t last_step = 0xFF;
   int32_t last_encoder = 0;
-  int32_t last_increment = 1;
+  int32_t last_increment = 0;
 
   while (1) {
+    /* Handle UI refresh when playback stops */
+    if (needs_ui_refresh) {
+      needs_ui_refresh = 0;
+      last_step = 0xFF;
 
-    /* Buttons are handled by interrupts (PA0 and PB8) */
+      /* Reset STEP counter display */
+      ST7789_WriteString(180, 10, "STEP: 01/16", WHITE, BLACK, 2);
 
-    /* Update BPM from encoder */
+      /* Reset any active blinkers without full screen redraw */
+      for (int i = 0; i < NUM_CHANNELS; i++) {
+        if (channel_states[i]) {
+          UpdateBlinker(i, 0, &drumset);
+          channel_states[i] = 0;
+        }
+      }
+      GPIOC_ODR |= (1 << 13); /* LED OFF */
+    }
+
+    /* Update status text when play state changes */
+    static uint8_t last_playing = 0xFF;
+    if (is_playing != last_playing) {
+      const char *status = is_playing ? "PLAYING" : "STOPPED";
+      uint16_t status_color = is_playing ? GREEN : RED;
+      ST7789_WriteString(10, 220, status, status_color, BLACK, 1);
+      last_playing = is_playing;
+    }
+
+    /* Handle BPM updates from encoder */
     int32_t encoder_val = Encoder_GetValue();
     if (encoder_val != last_encoder) {
       Sequencer_SetBPM((uint16_t)encoder_val);
       last_encoder = encoder_val;
 
-      /* Display BPM */
-      char buf[32];
-      snprintf(buf, sizeof(buf), "BPM: %d   ", (int)encoder_val);
-      ST7789_WriteString(10, 140, buf, YELLOW, BLACK, 2);
+      char val_buf[16];
+      snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
+      uint16_t val_color = (Encoder_GetIncrementStep() == 10) ? MAGENTA : CYAN;
+      ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
+      ST7789_WriteString(70, 10, val_buf, val_color, BLACK, 2);
     }
 
-    /* Check for increment step change */
+    /* Handle encoder increment step changes */
     int32_t increment = Encoder_GetIncrementStep();
     if (increment != last_increment) {
       last_increment = increment;
-
-      /* Display increment step */
-      char buf[32];
-      snprintf(buf, sizeof(buf), "Step: x%d  ", (int)increment);
-      ST7789_WriteString(10, 200, buf, MAGENTA, BLACK, 1);
+      char val_buf[16];
+      snprintf(val_buf, sizeof(val_buf), "%d ", (int)Encoder_GetValue());
+      uint16_t val_color = (increment == 10) ? MAGENTA : CYAN;
+      ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
+      ST7789_WriteString(70, 10, val_buf, val_color, BLACK, 2);
     }
 
-    /* Display current step if playing */
     if (is_playing) {
       uint8_t step = Sequencer_GetCurrentStep();
       if (step != last_step) {
         char buf[32];
-        snprintf(buf, sizeof(buf), "Step: %02d/%02d  ", step + 1,
+        snprintf(buf, sizeof(buf), "STEP: %02d/%02d", step + 1,
                  Sequencer_GetStepCount());
-        ST7789_WriteString(10, 170, buf, WHITE, BLACK, 2);
+        ST7789_WriteString(180, 10, buf, WHITE, BLACK, 2);
 
-        /* Blink LED on quarter notes (steps 0, 4, 8, 12) */
-        if ((step % 4) == 0) {
-          GPIOC_ODR &= ~(1 << 13); /* Turn ON (Active Low) */
-        } else {
-          GPIOC_ODR |= (1 << 13); /* Turn OFF */
+        /* Update blinkers based on pattern triggers */
+        for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
+          uint8_t velocity = Sequencer_GetStep(i, step);
+          uint8_t active = (velocity > 0);
+          if (active != channel_states[i]) {
+            UpdateBlinker(i, active, &drumset);
+            channel_states[i] = active;
+          }
         }
 
+        /* LED Blink on quarter notes */
+        if ((step % 4) == 0) {
+          GPIOC_ODR &= ~(1 << 13); /* ON */
+        } else {
+          GPIOC_ODR |= (1 << 13); /* OFF */
+        }
         last_step = step;
       }
     }
 
-    /* WaitForInterrupt to save power (wakes up on SysTick, Button, etc) */
     __asm volatile("wfi");
   }
 }
 
-/**
- * @brief Initialize a test pattern
- */
 static void LoadTestPattern(void) {
   /* Kick pattern */
-  Sequencer_SetStep(0, 0, 255);  /* Kick on step 0 */
-  Sequencer_SetStep(0, 4, 255);  /* Kick on step 4 */
-  Sequencer_SetStep(0, 8, 255);  /* Kick on step 8 */
-  Sequencer_SetStep(0, 12, 255); /* Kick on step 12 */
+  Sequencer_SetStep(0, 0, 255);
+  Sequencer_SetStep(0, 4, 255);
+  Sequencer_SetStep(0, 8, 255);
+  Sequencer_SetStep(0, 12, 255);
 
   /* Snare pattern */
-  Sequencer_SetStep(1, 4, 255);  /* Snare on step 4 */
-  Sequencer_SetStep(1, 12, 255); /* Snare on step 12 */
+  Sequencer_SetStep(1, 4, 255);
+  Sequencer_SetStep(1, 12, 255);
 
   /* Hats pattern */
-  Sequencer_SetStep(2, 2, 200);  /* Hats on step 2 */
-  Sequencer_SetStep(2, 6, 200);  /* Hats on step 6 */
-  Sequencer_SetStep(2, 10, 200); /* Hats on step 10 */
-  Sequencer_SetStep(2, 14, 200); /* Hats on step 14 */
+  Sequencer_SetStep(2, 2, 200);
+  Sequencer_SetStep(2, 6, 200);
+  Sequencer_SetStep(2, 10, 200);
+  Sequencer_SetStep(2, 14, 200);
 
-  /* Clap pattern with ghosts, panned left */
-  AudioMixer_SetPan(3, 80);      /* Pan Claps Left (Center is 128) */
-  Sequencer_SetStep(3, 4, 255);  /* Clap on 4 (Main) */
-  Sequencer_SetStep(3, 11, 40);  /* Ghost */
-  Sequencer_SetStep(3, 12, 255); /* Clap on 12 (Main) */
-  Sequencer_SetStep(3, 14, 60);  /* Ghost */
-  Sequencer_SetStep(3, 15, 30);  /* Ghost */
+  /* Clap pattern with ghosts */
+  AudioMixer_SetPan(3, 80);
+  Sequencer_SetStep(3, 4, 255);
+  Sequencer_SetStep(3, 11, 40);
+  Sequencer_SetStep(3, 12, 255);
+  Sequencer_SetStep(3, 14, 60);
+  Sequencer_SetStep(3, 15, 30);
 }
 
-/**
- * @brief Draw initial status screen
- */
-static void DrawStatusScreen(int sd_status, int file_count, Drumset *drumset) {
-  char buf[32];
+static void DrawMainScreen(Drumset *drumset) {
+  ST7789_Fill(BLACK);
 
-  ST7789_WriteString(10, 10, "DRUM SEQUENCER", CYAN, BLACK, 2);
-  ST7789_WriteString(10, 40, "Phase 2: Audio", WHITE, BLACK, 1);
-  ST7789_WriteString(10, 60, sd_status == 0 ? "SD: OK" : "SD: FAIL",
-                     sd_status == 0 ? GREEN : RED, BLACK, 1);
+  ST7789_WriteString(10, 10, "BPM: ", CYAN, BLACK, 2);
+  char val_buf[16];
+  snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
+  ST7789_WriteString(70, 10, val_buf, CYAN, BLACK, 2);
+  ST7789_WriteString(180, 10, "STEP: 01/16", WHITE, BLACK, 2);
 
-  snprintf(buf, sizeof(buf), "Files: %d", file_count);
-  ST7789_WriteString(10, 80, buf, WHITE, BLACK, 1);
+  /* Status indicator */
+  const char *status = is_playing ? "PLAYING" : "STOPPED";
+  uint16_t status_color = is_playing ? GREEN : RED;
+  ST7789_WriteString(10, 220, status, status_color, BLACK, 1);
 
-  /* Show sample loading status */
-  ST7789_WriteString(10, 140, "Samples:", WHITE, BLACK, 1);
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    snprintf(buf, sizeof(buf), "%s: %lu", drumset->sample_names[i],
-             (unsigned long)drumset->lengths[i]);
-    ST7789_WriteString(10, 160 + i * 15, buf,
-                       drumset->lengths[i] > 1000 ? GREEN : RED, BLACK, 1);
+  /* Square 0: Top Left */
+  ST7789_FillRect(10, 40, 145, 80, BLACK);
+  ST7789_DrawThickFrame(10, 40, 145, 80, 2, RED);
+  ST7789_WriteString(20, 50, drumset->sample_names[0], RED, BLACK, 1);
+
+  /* Square 1: Top Right */
+  ST7789_FillRect(165, 40, 145, 80, BLACK);
+  ST7789_DrawThickFrame(165, 40, 145, 80, 2, GREEN);
+  ST7789_WriteString(175, 50, drumset->sample_names[1], GREEN, BLACK, 1);
+
+  /* Square 2: Bottom Left */
+  ST7789_FillRect(10, 130, 145, 80, BLACK);
+  ST7789_DrawThickFrame(10, 130, 145, 80, 2, YELLOW);
+  ST7789_WriteString(20, 140, drumset->sample_names[2], YELLOW, BLACK, 1);
+
+  /* Square 3: Bottom Right */
+  ST7789_FillRect(165, 130, 145, 80, BLACK);
+  ST7789_DrawThickFrame(165, 130, 145, 80, 2, MAGENTA);
+  ST7789_WriteString(175, 140, drumset->sample_names[3], MAGENTA, BLACK, 1);
+}
+
+static void UpdateBlinker(uint8_t channel, uint8_t active, Drumset *drumset) {
+  uint16_t x, y, base_color;
+  (void)drumset;
+
+  switch (channel) {
+  case 0:
+    x = 10;
+    y = 40;
+    base_color = RED;
+    break;
+  case 1:
+    x = 165;
+    y = 40;
+    base_color = GREEN;
+    break;
+  case 2:
+    x = 10;
+    y = 130;
+    base_color = YELLOW;
+    break;
+  case 3:
+    x = 165;
+    y = 130;
+    base_color = MAGENTA;
+    break;
+  default:
+    return;
+  }
+
+  uint16_t frame_color = active ? WHITE : base_color;
+  uint16_t thickness = active ? 6 : 2;
+
+  ST7789_DrawThickFrame(x, y, 145, 80, thickness, frame_color);
+
+  if (!active) {
+    ST7789_DrawThickFrame(x + 2, y + 2, 141, 76, 4, BLACK);
   }
 }
 
-/**
- * @brief Button event callback
- */
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   if (pressed) {
     if (button_id == BUTTON_START) {
-      /* Toggle play/stop */
       is_playing = !is_playing;
       if (is_playing) {
         Sequencer_Start();
-        ST7789_WriteString(10, 220, "PLAYING ", GREEN, BLACK, 2);
+        GPIOC_ODR &= ~(1 << 13); /* ON */
       } else {
         Sequencer_Stop();
-        GPIOC_ODR |= (1 << 13); /* Turn off LED */
-        ST7789_WriteString(10, 220, "STOPPED ", RED, BLACK, 2);
+        GPIOC_ODR |= (1 << 13); /* OFF */
+        needs_ui_refresh = 1;
       }
     } else if (button_id == BUTTON_ENCODER) {
-      /* Toggle encoder increment */
       Encoder_ToggleIncrement();
     }
   }

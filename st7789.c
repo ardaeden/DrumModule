@@ -1,4 +1,5 @@
 #include "st7789.h"
+#include "dma_spi.h"
 #include "font.h"
 #include "spi.h"
 
@@ -6,6 +7,9 @@
 #define PERIPH_BASE 0x40000000UL
 #define AHB1PERIPH_BASE (PERIPH_BASE + 0x00020000UL)
 #define GPIOA_BASE (AHB1PERIPH_BASE + 0x0000UL)
+
+/* SPI Control Register Bits */
+#define SPI_SR_BSY (1 << 7)
 
 /* GPIOA Registers */
 #define GPIOA_MODER (*(volatile uint32_t *)(GPIOA_BASE + 0x00))
@@ -115,6 +119,9 @@ void ST7789_Init(void) {
 
   /* Enable backlight */
   BLK_HIGH();
+
+  /* Initialize DMA2 for fast fills */
+  SPI_DMA_Init();
 }
 
 /**
@@ -154,13 +161,14 @@ void ST7789_Fill(uint16_t color) {
   DC_DATA();
   CS_LOW();
 
-  uint8_t color_hi = color >> 8;
-  uint8_t color_lo = color & 0xFF;
-
-  for (uint32_t i = 0; i < ST7789_WIDTH * ST7789_HEIGHT; i++) {
-    SPI_Transmit(color_hi);
-    SPI_Transmit(color_lo);
+  /* Use direct SPI writes instead of DMA to avoid grain artifacts */
+  SPI_SetDataSize16();
+  uint32_t pixels = ST7789_WIDTH * ST7789_HEIGHT;
+  for (uint32_t i = 0; i < pixels; i++) {
+    SPI_WriteData16(color);
   }
+  SPI_WaitBusy();
+  SPI_SetDataSize8();
 
   CS_HIGH();
 }
@@ -187,60 +195,21 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
   DC_DATA();
   CS_LOW();
 
-  uint8_t color_hi = color >> 8;
-  uint8_t color_lo = color & 0xFF;
-
-  for (uint32_t i = 0; i < w * h; i++) {
-    SPI_Transmit(color_hi);
-    SPI_Transmit(color_lo);
-  }
-
-  CS_HIGH();
-}
-
-/**
- * @brief Draw rectangle outline
- * @param x X coordinate
- * @param y Y coordinate
- * @param w Width
- * @param h Height
- * @param color RGB565 color value
- */
-void ST7789_DrawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                     uint16_t color) {
-  ST7789_FillRect(x, y, w, 1, color);         /* Top */
-  ST7789_FillRect(x, y + h - 1, w, 1, color); /* Bottom */
-  ST7789_FillRect(x, y, 1, h, color);         /* Left */
-  ST7789_FillRect(x + w - 1, y, 1, h, color); /* Right */
-}
-
-/**
- * @brief Write pixel buffer to display
- * @param x X coordinate
- * @param y Y coordinate
- * @param w Width
- * @param h Height
- * @param data Pointer to RGB565 pixel data
- */
-void ST7789_WriteBuffer(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                        uint16_t *data) {
-  if ((x >= ST7789_WIDTH) || (y >= ST7789_HEIGHT))
-    return;
-  if ((x + w - 1) >= ST7789_WIDTH)
-    w = ST7789_WIDTH - x;
-  if ((y + h - 1) >= ST7789_HEIGHT)
-    h = ST7789_HEIGHT - y;
-
-  ST7789_SetAddressWindow(x, y, x + w - 1, y + h - 1);
-
-  DC_DATA();
-  CS_LOW();
-
   uint32_t pixels = w * h;
-  for (uint32_t i = 0; i < pixels; i++) {
-    uint16_t color = data[i];
-    SPI_Transmit(color >> 8);
-    SPI_Transmit(color & 0xFF);
+
+  /* Use DMA2 for small fills (> 20 pixels) to accelerate frames */
+  if (pixels > 20) {
+    SPI_SetDataSize16();
+    SPI_DMA_FillColor(color, pixels);
+    SPI_SetDataSize8();
+  } else {
+    /* Use direct 16-bit mode for small fills */
+    SPI_SetDataSize16();
+    for (uint32_t i = 0; i < pixels; i++) {
+      SPI_WriteData16(color);
+    }
+    SPI_WaitBusy();
+    SPI_SetDataSize8();
   }
 
   CS_HIGH();
@@ -300,9 +269,10 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
           uint8_t color_hi = color >> 8;
           uint8_t color_lo = color & 0xFF;
           for (int k = 0; k < size * size; k++) {
-            SPI_Transmit(color_hi);
-            SPI_Transmit(color_lo);
+            SPI_WriteData8(color_hi);
+            SPI_WriteData8(color_lo);
           }
+          SPI_WaitBusy();
           CS_HIGH();
         }
       } else if (bg != color) {
@@ -317,9 +287,10 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
           uint8_t color_hi = bg >> 8;
           uint8_t color_lo = bg & 0xFF;
           for (int k = 0; k < size * size; k++) {
-            SPI_Transmit(color_hi);
-            SPI_Transmit(color_lo);
+            SPI_WriteData8(color_hi);
+            SPI_WriteData8(color_lo);
           }
+          SPI_WaitBusy();
           CS_HIGH();
         }
       }
@@ -336,6 +307,33 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
  * @param bg Background color
  * @param size Scale factor
  */
+/**
+ * @brief Draw a thick frame using Quad-Burst DMA
+ * @param x Top left X
+ * @param y Top left Y
+ * @param w Width
+ * @param h Height
+ * @param thickness Border thickness
+ * @param color Frame color
+ */
+void ST7789_DrawThickFrame(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                           uint16_t thickness, uint16_t color) {
+  if (thickness == 0)
+    return;
+
+  /* Top segment */
+  ST7789_FillRect(x, y, w, thickness, color);
+
+  /* Bottom segment */
+  ST7789_FillRect(x, y + h - thickness, w, thickness, color);
+
+  /* Left segment (middle) */
+  ST7789_FillRect(x, y + thickness, thickness, h - 2 * thickness, color);
+
+  /* Right segment (middle) */
+  ST7789_FillRect(x + w - thickness, y + thickness, thickness,
+                  h - 2 * thickness, color);
+}
 void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, uint16_t color,
                         uint16_t bg, uint8_t size) {
   while (*str) {

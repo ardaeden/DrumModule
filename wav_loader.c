@@ -134,29 +134,77 @@ static int load_wav_to_buffer(const char *path, int16_t *buffer,
 }
 
 int Drumset_Load(const char *kit_path, Drumset *drumset) {
-  // Try to load standard filenames from root directory
-  strncpy(drumset->name, "DEFAULT KIT", sizeof(drumset->name));
+  strncpy(drumset->name, "ROOT KIT", sizeof(drumset->name));
 
-  const char *filenames[] = {"KICK.WAV", "SNARE.WAV", "HATS.WAV", "CLAP.WAV"};
-  const char *names[] = {"KICK", "SNARE", "HATS", "CLAP"};
+  /* Search keywords for dynamic discovery */
+  const char *keywords[] = {"KICK", "SNARE", "HATS", "CLAP"};
+
+  /* Scan root directory once */
+  FAT32_FileEntry dir_files[FAT32_MAX_FILES];
+  int file_count = FAT32_ListRootFiles(dir_files, FAT32_MAX_FILES);
+  if (file_count < 0)
+    file_count = 0;
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
-    strncpy(drumset->sample_names[i], names[i],
-            sizeof(drumset->sample_names[i]));
-    drumset->samples[i] = sample_buffers[i];
+    char found_name[16] = "";
+    int file_idx = -1;
 
-    // Try to load WAV file
-    int samples_loaded =
-        load_wav_to_buffer(filenames[i], sample_buffers[i], MAX_SAMPLE_SIZE);
-
-    if (samples_loaded > 0) {
-      drumset->lengths[i] = samples_loaded;
-    } else {
-      // File not found or error - use silence
-      drumset->lengths[i] = 1000;
-      for (uint32_t j = 0; j < drumset->lengths[i]; j++) {
-        sample_buffers[i][j] = 0;
+    /* Search for keyword match (Case-Insensitive) */
+    for (int j = 0; j < file_count; j++) {
+      int match = 1;
+      for (int k = 0; k < (int)strlen(keywords[i]); k++) {
+        char c1 = dir_files[j].name[k];
+        char c2 = keywords[i][k];
+        if (c1 >= 'a' && c1 <= 'z')
+          c1 -= 32;
+        if (c2 >= 'a' && c2 <= 'z')
+          c2 -= 32;
+        if (c1 != c2) {
+          match = 0;
+          break;
+        }
       }
+      if (match) {
+        file_idx = j;
+        strncpy(found_name, dir_files[j].name, sizeof(found_name));
+        break;
+      }
+    }
+
+    if (file_idx != -1) {
+      /* File found - try to load it */
+      drumset->samples[i] = sample_buffers[i];
+      int samples_loaded =
+          load_wav_to_buffer(found_name, sample_buffers[i], MAX_SAMPLE_SIZE);
+
+      if (samples_loaded > 0) {
+        /* File loaded successfully - extract label from actual filename */
+        drumset->lengths[i] = samples_loaded;
+        strncpy(drumset->sample_names[i], found_name,
+                sizeof(drumset->sample_names[i]) - 1);
+        drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
+
+        char *dot = strchr(drumset->sample_names[i], '.');
+        if (dot)
+          *dot = '\0';
+      } else {
+        /* File found but load failed - use keyword fallback */
+        drumset->lengths[i] = 1000;
+        strncpy(drumset->sample_names[i], keywords[i],
+                sizeof(drumset->sample_names[i]) - 1);
+        drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
+        for (uint32_t j = 0; j < 1000; j++)
+          sample_buffers[i][j] = 0;
+      }
+    } else {
+      /* File not found - use keyword fallback */
+      strncpy(drumset->sample_names[i], keywords[i],
+              sizeof(drumset->sample_names[i]) - 1);
+      drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
+      drumset->samples[i] = sample_buffers[i];
+      drumset->lengths[i] = 1000;
+      for (uint32_t j = 0; j < 1000; j++)
+        sample_buffers[i][j] = 0;
     }
   }
 

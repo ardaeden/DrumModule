@@ -22,14 +22,12 @@ void ST7789_Init(void);
 void ST7789_Fill(uint16_t color);
 void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                      uint16_t color);
-void ST7789_DrawRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                     uint16_t color);
-void ST7789_WriteBuffer(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
-                        uint16_t *data);
 void ST7789_DrawPixel(uint16_t x, uint16_t y, uint16_t color);
 void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
                      uint16_t bg, uint8_t size);
 void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, uint16_t color,
                         uint16_t bg, uint8_t size);
+void ST7789_DrawThickFrame(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                           uint16_t thickness, uint16_t color);
 
 #endif

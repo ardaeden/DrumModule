@@ -34,17 +34,6 @@ void AudioMixer_SetPan(uint8_t channel, uint8_t pan);
 void AudioMixer_Trigger(uint8_t channel, uint8_t velocity);
 
 /**
- * @brief Stop channel
- * @param channel Channel number (0-3)
- */
-void AudioMixer_Stop(uint8_t channel);
-
-/**
- * @brief Stop all channels
- */
-void AudioMixer_StopAll(void);
-
-/**
  * @brief Process audio (fill output buffer)
  * @param output Output buffer (stereo interleaved)
  * @param length Number of stereo frames

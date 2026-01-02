@@ -65,7 +65,8 @@ void SPI_Init(void) {
 }
 
 /**
- * @brief Transmit one byte via SPI1
+ * @brief Transmit one byte via SPI1 (Safe version)
+ * @details Waits for both TXE and BSY to ensure clean line state
  * @param data Byte to transmit
  */
 void SPI_Transmit(uint8_t data) {
@@ -77,6 +78,61 @@ void SPI_Transmit(uint8_t data) {
   SPI1_DR = data;
 
   /* Wait for transmission complete */
+  while (SPI1_SR & SPI_SR_BSY)
+    ;
+}
+
+/**
+ * @brief Write one byte to SPI1 as fast as possible
+ * @details Only waits for TXE (Transpose Empty). Used for bulk transfers.
+ * @param data Byte to transmit
+ */
+void SPI_WriteData8(uint8_t data) {
+  /* Wait for transmit buffer empty */
+  while (!(SPI1_SR & SPI_SR_TXE))
+    ;
+
+  /* Send data */
+  SPI1_DR = data;
+}
+
+/**
+ * @brief Write one 16-bit word to SPI1 as fast as possible
+ * @details Only waits for TXE (Transpose Empty). Used for bulk transfers.
+ * @param data 16-bit word to transmit
+ */
+void SPI_WriteData16(uint16_t data) {
+  /* Wait for transmit buffer empty */
+  while (!(SPI1_SR & SPI_SR_TXE))
+    ;
+
+  /* Send data */
+  SPI1_DR = data;
+}
+
+/**
+ * @brief Configure SPI1 for 16-bit data frame format
+ */
+void SPI_SetDataSize16(void) {
+  SPI1_CR1 &= ~SPI_CR1_SPE; /* Disable SPI */
+  SPI1_CR1 |= (1 << 11);    /* DFF: 16-bit data frame format */
+  SPI1_CR1 |= SPI_CR1_SPE;  /* Enable SPI */
+}
+
+/**
+ * @brief Configure SPI1 for 8-bit data frame format
+ */
+void SPI_SetDataSize8(void) {
+  SPI1_CR1 &= ~SPI_CR1_SPE; /* Disable SPI */
+  SPI1_CR1 &= ~(1 << 11);   /* DFF: 8-bit data frame format */
+  SPI1_CR1 |= SPI_CR1_SPE;  /* Enable SPI */
+}
+
+/**
+ * @brief Wait until SPI1 is no longer busy
+ * @details Must be called after bulk transfers before toggling CS/DC pins
+ */
+void SPI_WaitBusy(void) {
   while (SPI1_SR & SPI_SR_BSY)
     ;
 }

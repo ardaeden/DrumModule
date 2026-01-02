@@ -52,18 +52,6 @@ void AudioMixer_Trigger(uint8_t channel, uint8_t velocity) {
   channels[channel].active = 1;
 }
 
-void AudioMixer_Stop(uint8_t channel) {
-  if (channel >= NUM_CHANNELS)
-    return;
-  channels[channel].active = 0;
-}
-
-void AudioMixer_StopAll(void) {
-  for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-    channels[i].active = 0;
-  }
-}
-
 void AudioMixer_Process(int16_t *output, uint32_t length) {
   for (uint32_t i = 0; i < length; i++) {
     int32_t mix_left = 0;

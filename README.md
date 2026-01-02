@@ -1,6 +1,6 @@
 # STM32F411 Eurorack Drum Sequencer
 
-A 6-channel, 16-step drum sequencer for Eurorack modular synthesizers, built on the STM32F411CEU6 "Black Pill" board.
+A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on the STM32F411CEU6 "Black Pill" board.
 
 ## Features
 
@@ -11,7 +11,7 @@ A 6-channel, 16-step drum sequencer for Eurorack modular synthesizers, built on 
 - **Dynamic Mixing**: Per-channel volume and panning.
 
 ### Sequencer 🎹
-- **16 Steps**: Classic step sequencing.
+- **32 Steps**: Expanded 2-bar step sequencing.
 - **24 PPQN Clock**: High-resolution internal clock.
 - **Hardware Sync Output**: 24 PPQN 50% duty cycle clock on **PA15**.
 - **Adjustable BPM**: 40-300 BPM via rotary encoder.
@@ -19,7 +19,7 @@ A 6-channel, 16-step drum sequencer for Eurorack modular synthesizers, built on 
 ### User Interface 🖥️
 - **Display**: ST7789 320×240 IPS LCD.
 - **Real-time Feedback**: 
-  - Dynamic Step Counter.
+  - Dynamic Step Counter (e.g., "01/32").
   - Active Step Visualizers.
   - Large Status Indicator (PLAYING/STOPPED).
 
@@ -75,11 +75,12 @@ Format SD card as **FAT32**.
 *Note: Samples must be 44.1kHz, 16-bit PCM Mono.*
 
 ## Development Status
-✅ **Phase 3 Complete**:
+✅ **Phase 4 Complete**:
 - [x] Expanded to 6 Channels.
 - [x] Hardware Clock Output implemented.
 - [x] Codebase optimized and cleaned.
-- [x] UI refined (Right-aligned counter, readable fonts).
+- [x] Scable Sequencer (32 Steps supported).
+- [x] UI refined (Dynamic counters, readable fonts).
 
 ## Credits
 

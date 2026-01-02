@@ -1,6 +1,7 @@
 #include "wav_loader.h"
 #include "fat32.h"
 #include "sdcard.h"
+#include <stdio.h>
 #include <string.h>
 
 /* WAV header structure */
@@ -28,46 +29,16 @@ static uint8_t sector_buffer[512];
 static int16_t sample_buffers[NUM_CHANNELS][MAX_SAMPLE_SIZE];
 
 /**
- * @brief Find file in root directory
- * @param filename File to find
- * @param file_entry Output file entry
- * @return 0 on success, -1 if not found
- */
-static int find_file(const char *filename, FAT32_FileEntry *file_entry) {
-  FAT32_FileEntry files[FAT32_MAX_FILES];
-  int count = FAT32_ListRootFiles(files, FAT32_MAX_FILES);
-
-  if (count <= 0)
-    return -1;
-
-  for (int i = 0; i < count; i++) {
-    if (strcmp(files[i].name, filename) == 0) {
-      *file_entry = files[i];
-      return 0;
-    }
-  }
-
-  return -1;
-}
-
-/**
  * @brief Load WAV file into provided buffer
- * @param path File path
+ * @param file_entry File entry to load
  * @param buffer Buffer to load into
  * @param max_samples Maximum samples to load
  * @return Number of samples loaded, or -1 on error
  */
-static int load_wav_to_buffer(const char *path, int16_t *buffer,
+static int load_wav_to_buffer(FAT32_FileEntry *file_entry, int16_t *buffer,
                               uint32_t max_samples) {
-  FAT32_FileEntry file;
-
-  // Find file
-  if (find_file(path, &file) != 0) {
-    return -1;
-  }
-
-  // Get first sector
-  uint32_t sector = FAT32_GetFileSector(&file);
+  /* Get first sector */
+  uint32_t sector = FAT32_GetFileSector(file_entry);
   if (sector == 0) {
     return -1;
   }
@@ -80,12 +51,30 @@ static int load_wav_to_buffer(const char *path, int16_t *buffer,
   // Parse header
   WAVHeader *header = (WAVHeader *)sector_buffer;
 
-  // Validate
+  // Validate RIFF/WAVE header
   if (memcmp(header->riff, "RIFF", 4) != 0 ||
-      memcmp(header->wave, "WAVE", 4) != 0 || header->audio_format != 1 ||
-      header->num_channels != 1 || header->sample_rate != 44100 ||
-      header->bits_per_sample != 16) {
-    return -1;
+      memcmp(header->wave, "WAVE", 4) != 0) {
+    return -2; // Bad header
+  }
+
+  // Check PCM format
+  if (header->audio_format != 1) {
+    return -3; // Not PCM
+  }
+
+  // Check sample rate
+  if (header->sample_rate != 44100) {
+    return -4; // Wrong sample rate
+  }
+
+  // Check bit depth
+  if (header->bits_per_sample != 16) {
+    return -5; // Wrong bit depth
+  }
+
+  // Check mono (we only support mono for now, stereo mixing can be added later)
+  if (header->num_channels != 1) {
+    return -6; // Not mono
   }
 
   // Calculate samples
@@ -136,86 +125,83 @@ static int load_wav_to_buffer(const char *path, int16_t *buffer,
 int Drumset_Load(const char *kit_path, Drumset *drumset) {
   strncpy(drumset->name, "ROOT KIT", sizeof(drumset->name));
 
-  /* Search keywords for dynamic discovery */
-  const char *keywords[] = {"KICK", "SNARE", "HATS", "CLAP"};
-
-  /* Scan root directory once */
+  /* Scan root directory */
   FAT32_FileEntry dir_files[FAT32_MAX_FILES];
   int file_count = FAT32_ListRootFiles(dir_files, FAT32_MAX_FILES);
   if (file_count < 0)
     file_count = 0;
 
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    char found_name[16] = "";
-    int file_idx = -1;
+  int channel = 0;
 
-    /* Search for keyword match (Case-Insensitive) */
-    for (int j = 0; j < file_count; j++) {
-      int match = 1;
-      for (int k = 0; k < (int)strlen(keywords[i]); k++) {
-        char c1 = dir_files[j].name[k];
-        char c2 = keywords[i][k];
-        if (c1 >= 'a' && c1 <= 'z')
-          c1 -= 32;
-        if (c2 >= 'a' && c2 <= 'z')
-          c2 -= 32;
-        if (c1 != c2) {
-          match = 0;
-          break;
+  /* Load first 4 WAV files found */
+  for (int i = 0; i < file_count && channel < NUM_CHANNELS; i++) {
+    char *fname = dir_files[i].name;
+    int len = strlen(fname);
+
+    /* Check for .WAV extension (case insensitive) */
+    if (len > 4) {
+      const char *ext = &fname[len - 4];
+      if ((ext[0] == '.' && (ext[1] == 'W' || ext[1] == 'w') &&
+           (ext[2] == 'A' || ext[2] == 'a') &&
+           (ext[3] == 'V' || ext[3] == 'v'))) {
+
+        /* Load this file */
+        drumset->samples[channel] = sample_buffers[channel];
+        int samples_loaded = load_wav_to_buffer(
+            &dir_files[i], sample_buffers[channel], MAX_SAMPLE_SIZE);
+
+        if (samples_loaded > 0) {
+          drumset->lengths[channel] = samples_loaded;
+
+          /* Use filename (without .wav) as label */
+          strncpy(drumset->sample_names[channel], fname,
+                  sizeof(drumset->sample_names[channel]) - 1);
+          drumset->sample_names[channel]
+                               [sizeof(drumset->sample_names[channel]) - 1] =
+              '\0';
+
+          /* Remove .wav extension */
+          char *dot = strchr(drumset->sample_names[channel], '.');
+          if (dot)
+            *dot = '\0';
+
+          channel++;
+        } else {
+          /* Show error for failed loads */
+          if (channel == 0) {
+            char err_msg[16];
+            snprintf(err_msg, sizeof(err_msg), "ERR:%d", samples_loaded);
+            strncpy(drumset->sample_names[channel], err_msg,
+                    sizeof(drumset->sample_names[channel]) - 1);
+          } else {
+            strncpy(drumset->sample_names[channel], "LOAD ERR",
+                    sizeof(drumset->sample_names[channel]) - 1);
+          }
+          drumset->sample_names[channel]
+                               [sizeof(drumset->sample_names[channel]) - 1] =
+              '\0';
+          drumset->samples[channel] = sample_buffers[channel];
+          drumset->lengths[channel] = 1000;
+          for (uint32_t j = 0; j < 1000; j++)
+            sample_buffers[channel][j] = 0;
+          channel++;
         }
       }
-      if (match) {
-        file_idx = j;
-        strncpy(found_name, dir_files[j].name, sizeof(found_name));
-        break;
-      }
     }
+  }
 
-    if (file_idx != -1) {
-      /* File found - try to load it */
-      drumset->samples[i] = sample_buffers[i];
-      int samples_loaded =
-          load_wav_to_buffer(found_name, sample_buffers[i], MAX_SAMPLE_SIZE);
-
-      if (samples_loaded > 0) {
-        /* File loaded successfully - extract label from actual filename */
-        drumset->lengths[i] = samples_loaded;
-        strncpy(drumset->sample_names[i], found_name,
-                sizeof(drumset->sample_names[i]) - 1);
-        drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
-
-        char *dot = strchr(drumset->sample_names[i], '.');
-        if (dot)
-          *dot = '\0';
-      } else {
-        /* File found but load failed - use keyword fallback */
-        drumset->lengths[i] = 1000;
-        strncpy(drumset->sample_names[i], keywords[i],
-                sizeof(drumset->sample_names[i]) - 1);
-        drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
-        for (uint32_t j = 0; j < 1000; j++)
-          sample_buffers[i][j] = 0;
-      }
-    } else {
-      /* File not found - use keyword fallback */
-      strncpy(drumset->sample_names[i], keywords[i],
-              sizeof(drumset->sample_names[i]) - 1);
-      drumset->sample_names[i][sizeof(drumset->sample_names[i]) - 1] = '\0';
-      drumset->samples[i] = sample_buffers[i];
-      drumset->lengths[i] = 1000;
-      for (uint32_t j = 0; j < 1000; j++)
-        sample_buffers[i][j] = 0;
-    }
+  /* Fill remaining channels with EMPTY */
+  for (; channel < NUM_CHANNELS; channel++) {
+    strncpy(drumset->sample_names[channel], "EMPTY",
+            sizeof(drumset->sample_names[channel]) - 1);
+    drumset->sample_names[channel][sizeof(drumset->sample_names[channel]) - 1] =
+        '\0';
+    drumset->samples[channel] = sample_buffers[channel];
+    drumset->lengths[channel] = 1000;
+    for (uint32_t j = 0; j < 1000; j++)
+      sample_buffers[channel][j] = 0;
   }
 
   (void)kit_path;
   return 0;
-}
-
-void Drumset_Free(Drumset *drumset) {
-  // Using static buffers, so nothing to free
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    drumset->samples[i] = NULL;
-    drumset->lengths[i] = 0;
-  }
 }

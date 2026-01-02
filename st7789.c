@@ -1,5 +1,4 @@
 #include "st7789.h"
-#include "dma_spi.h"
 #include "font.h"
 #include "spi.h"
 
@@ -120,8 +119,8 @@ void ST7789_Init(void) {
   /* Enable backlight */
   BLK_HIGH();
 
-  /* Initialize DMA2 for fast fills */
-  SPI_DMA_Init();
+  /* Initialize SPI */
+  SPI_Init();
 }
 
 /**
@@ -197,20 +196,13 @@ void ST7789_FillRect(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
 
   uint32_t pixels = w * h;
 
-  /* Use DMA2 for small fills (> 20 pixels) to accelerate frames */
-  if (pixels > 20) {
-    SPI_SetDataSize16();
-    SPI_DMA_FillColor(color, pixels);
-    SPI_SetDataSize8();
-  } else {
-    /* Use direct 16-bit mode for small fills */
-    SPI_SetDataSize16();
-    for (uint32_t i = 0; i < pixels; i++) {
-      SPI_WriteData16(color);
-    }
-    SPI_WaitBusy();
-    SPI_SetDataSize8();
+  /* Use direct 16-bit mode */
+  SPI_SetDataSize16();
+  for (uint32_t i = 0; i < pixels; i++) {
+    SPI_WriteData16(color);
   }
+  SPI_WaitBusy();
+  SPI_SetDataSize8();
 
   CS_HIGH();
 }

@@ -36,7 +36,7 @@
 #define SPI_CR1_SSM (1 << 9)
 #define SPI_CR1_SSI (1 << 8)
 #define SPI_CR1_BR_DIV256 (7 << 3) /* ~187.5kHz at 48MHz APB1 */
-#define SPI_CR1_BR_DIV4 (1 << 3)   /* ~12MHz at 48MHz APB1 */
+#define SPI_CR1_BR_DIV16 (3 << 3)  /* ~3MHz at 48MHz APB1 */
 
 /* SPI Status Register Bits */
 #define SPI_SR_TXE (1 << 1)
@@ -122,9 +122,9 @@ void SDCARD_SPI_SetFastSpeed(void) {
   /* Disable SPI */
   SPI3_CR1 &= ~SPI_CR1_SPE;
 
-  /* Set baud rate to /4 (~12MHz) */
+  /* Set baud rate to /16 (~3MHz) */
   SPI3_CR1 &= ~(7 << 3);
-  SPI3_CR1 |= SPI_CR1_BR_DIV4;
+  SPI3_CR1 |= SPI_CR1_BR_DIV16;
 
   /* Enable SPI */
   SPI3_CR1 |= SPI_CR1_SPE;

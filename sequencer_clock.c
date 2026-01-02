@@ -13,12 +13,21 @@
 #define TIM2_DIER (*(volatile uint32_t *)(TIM2_BASE + 0x0C))
 #define TIM2_SR (*(volatile uint32_t *)(TIM2_BASE + 0x10))
 #define TIM2_EGR (*(volatile uint32_t *)(TIM2_BASE + 0x14))
+#define TIM2_CCMR1 (*(volatile uint32_t *)(TIM2_BASE + 0x18))
+#define TIM2_CCER (*(volatile uint32_t *)(TIM2_BASE + 0x20))
 #define TIM2_CNT (*(volatile uint32_t *)(TIM2_BASE + 0x24))
 #define TIM2_PSC (*(volatile uint32_t *)(TIM2_BASE + 0x28))
 #define TIM2_ARR (*(volatile uint32_t *)(TIM2_BASE + 0x2C))
+#define TIM2_CCR1 (*(volatile uint32_t *)(TIM2_BASE + 0x34))
 
 /* RCC Registers */
+#define RCC_AHB1ENR (*(volatile uint32_t *)(RCC_BASE + 0x30))
 #define RCC_APB1ENR (*(volatile uint32_t *)(RCC_BASE + 0x40))
+
+/* GPIOA Registers */
+#define GPIOA_BASE (PERIPH_BASE + 0x00020000UL) /* AHB1 Base */
+#define GPIOA_MODER (*(volatile uint32_t *)(GPIOA_BASE + 0x00))
+#define GPIOA_AFRH (*(volatile uint32_t *)(GPIOA_BASE + 0x24))
 
 /* TIM2 Control Register Bits */
 #define TIM_CR1_CEN (1 << 0)  /* Counter enable */
@@ -55,12 +64,36 @@ void Clock_Init(void) {
   /* Enable TIM2 clock */
   RCC_APB1ENR |= (1 << 0);
 
+  /* Enable GPIOA clock for PA15 */
+  RCC_AHB1ENR |= (1 << 0);
+
+  /* Configure PA15 as Alternate Function (Mode 10) */
+  GPIOA_MODER &= ~(3UL << (15 * 2));
+  GPIOA_MODER |= (2UL << (15 * 2));
+
+  /* Set PA15 to AF1 (TIM2_CH1) */
+  /* AFR[1] is AFRH. Pin 15 is in AFRH bits 28-31 */
+  GPIOA_AFRH &= ~(0xFUL << 28);
+  GPIOA_AFRH |= (1UL << 28);
+
   /* Configure TIM2 */
   TIM2_CR1 = 0;
   TIM2_CR1 |= (1 << 7); /* ARPE: Auto-reload preload enable */
   TIM2_PSC = 95;        /* 96MHz / 96 = 1MHz */
   TIM2_ARR = calculate_period(current_bpm) - 1;
   TIM2_CNT = 0;
+
+  /* Configure TIM2 Channel 1 for PWM Mode 1 (Output) */
+  /* CCMR1: OC1M = 110 (PWM Mode 1), OC1PE = 1 (Preload enable) */
+  TIM2_CCMR1 &= ~0xFF; /* Clear Channel 1 bits */
+  TIM2_CCMR1 |= (6 << 4) | (1 << 3);
+
+  /* Set Duty Cycle to 50% */
+  TIM2_CCR1 = (TIM2_ARR + 1) / 2;
+
+  /* Enable Output on Channel 1 */
+  /* CCER: CC1E = 1 */
+  TIM2_CCER |= (1 << 0);
 
   /* Enable update interrupt */
   TIM2_DIER |= TIM_DIER_UIE;
@@ -85,10 +118,12 @@ void Clock_SetBPM(uint16_t bpm) {
 
   current_bpm = bpm;
 
-  /* Update timer period
-   * With ARPE enabled, this is buffered and takes effect at next update
-   */
-  TIM2_ARR = calculate_period(bpm) - 1;
+  /* Update timer period */
+  uint32_t period = calculate_period(bpm);
+  TIM2_ARR = period - 1;
+
+  /* Update Duty Cycle to 50% */
+  TIM2_CCR1 = period / 2;
 }
 
 uint16_t Clock_GetBPM(void) { return current_bpm; }

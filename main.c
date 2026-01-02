@@ -147,8 +147,8 @@ int main(void) {
     I2S_Start();
   }
 
-  DrawMainScreen(&drumset);
   LoadTestPattern();
+  DrawMainScreen(&drumset);
 
   int32_t last_encoder = 0;
   int32_t last_increment = 0;
@@ -160,7 +160,11 @@ int main(void) {
       last_step = 0xFF;
 
       /* Reset STEP counter display */
-      ST7789_WriteString(240, 10, "01/16      ", WHITE, BLACK, 2);
+      /* Reset STEP counter display */
+      char step_buf[32];
+      snprintf(step_buf, sizeof(step_buf), "01/%02d      ",
+               Sequencer_GetStepCount());
+      ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
 
       /* Reset any active blinkers without full screen redraw */
       for (int i = 0; i < NUM_CHANNELS; i++) {
@@ -241,48 +245,49 @@ static void LoadTestPattern(void) {
   /* Clear pattern */
   Sequencer_ClearPattern();
 
-  /* KICK (Ch 0): Minimal House (4-on-the-floor)
-   * 1 . . . 2 . . . 3 . . . 4 . . .
-   */
-  Sequencer_SetStep(0, 0, 200);
-  Sequencer_SetStep(0, 4, 200);
-  Sequencer_SetStep(0, 8, 200);
-  Sequencer_SetStep(0, 12, 200);
+  /* Set 32 Steps (2 Bars) */
+  Sequencer_SetStepCount(32);
 
-  /* SNARE (Ch 1): Classic Backbeat
-   * . . . . X . . . . . . . X . . .
-   */
-  Sequencer_SetStep(1, 4, 255);  // Backbeat on 2
-  Sequencer_SetStep(1, 12, 255); // Backbeat on 4
+  /* KICK (Ch 0): 4-on-the-floor (Same for both bars) */
+  for (int i = 0; i < 32; i += 4) {
+    Sequencer_SetStep(0, i, 200);
+  }
 
-  /* HATS (Ch 2): Pure Off-beat Open Hat
-   * . . X . . . X . . . X . . . X .
-   */
-  Sequencer_SetStep(2, 2, 180);
-  Sequencer_SetStep(2, 6, 180);
-  Sequencer_SetStep(2, 10, 180);
-  Sequencer_SetStep(2, 14, 180);
+  /* SNARE (Ch 1): Backbeat on 2 and 4 (Steps 4, 12, 20, 28) */
+  Sequencer_SetStep(1, 4, 255);
+  Sequencer_SetStep(1, 12, 255);
+  Sequencer_SetStep(1, 20, 255);
+  Sequencer_SetStep(1, 28, 255);
+  /* Snare Variation: Ghost at end of Bar 2 */
+  Sequencer_SetStep(1, 31, 80);
 
-  /* CLAP (Ch 3): Deep Dub Echo feel
-   * One hit with delay simulation
-   */
-  AudioMixer_SetPan(3, 100);    // Left-ish
-  Sequencer_SetStep(3, 4, 200); // The Hit
-  Sequencer_SetStep(3, 7, 60);  // Echo 1
-  Sequencer_SetStep(3, 10, 30); // Echo 2
+  /* HATS (Ch 2): Off-beat Open Hat (2, 6, 10, 14...) */
+  for (int i = 2; i < 32; i += 4) {
+    Sequencer_SetStep(2, i, 180);
+  }
+  /* Hats Variation: 16th notes in Bar 2 fill */
+  Sequencer_SetStep(2, 29, 100);
+  Sequencer_SetStep(2, 31, 100);
 
-  /* PERC 1 (Ch 4): Minimal Glitch
-   * Random-ish sparse hits
-   */
-  AudioMixer_SetPan(4, 220); // Right
+  /* CLAP (Ch 3): Dub Echo - Bar 1 Only */
+  AudioMixer_SetPan(3, 100);
+  Sequencer_SetStep(3, 4, 200);
+  Sequencer_SetStep(3, 7, 60);
+  Sequencer_SetStep(3, 10, 30);
+  /* Clap Variation: Bar 2 response (sparser) */
+  Sequencer_SetStep(3, 20, 200);
+
+  /* PERC 1 (Ch 4): Glitch Texture */
+  AudioMixer_SetPan(4, 220);
   Sequencer_SetStep(4, 11, 150);
   Sequencer_SetStep(4, 15, 100);
+  Sequencer_SetStep(4, 27, 150);
+  Sequencer_SetStep(4, 30, 120);
 
-  /* PERC 2 (Ch 5): Sub assitance / Texture
-   * Just one texture hit
-   */
+  /* PERC 2 (Ch 5): Deep Texture */
   AudioMixer_SetPan(5, 128);
   Sequencer_SetStep(5, 0, 80);
+  Sequencer_SetStep(5, 16, 100); // Start of Bar 2 accent
 }
 
 static void DrawMainScreen(Drumset *drumset) {
@@ -292,7 +297,11 @@ static void DrawMainScreen(Drumset *drumset) {
   char val_buf[16];
   snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
   ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
-  ST7789_WriteString(240, 10, "01/16", WHITE, BLACK, 2);
+  ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+
+  char step_buf[32];
+  snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
+  ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
 
   /* Status indicator */
   const char *status = is_playing ? "PLAYING" : "STOPPED";

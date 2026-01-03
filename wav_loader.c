@@ -457,7 +457,7 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
   }
 
   // Set Kit Name
-  snprintf(drumset->name, sizeof(drumset->name), "Kit-%03d", slot);
+  snprintf(drumset->name, sizeof(drumset->name), "KIT-%03d", slot);
 
   return 0;
 }

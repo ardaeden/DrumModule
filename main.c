@@ -573,7 +573,7 @@ int main(void) {
   /* Attempt to load Slot 1 on boot */
   if (Drumset_LoadFromSlot(&drumset, 1) != 0) {
     /* If failed, set default name */
-    strcpy(drumset.name, "Kit-001");
+    strcpy(drumset.name, "KIT-001");
   }
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
@@ -852,8 +852,8 @@ static void DrawMainScreen(Drumset *drumset) {
   uint16_t status_color = is_playing ? GREEN : RED;
   ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
-  /* Show Loaded Kit Name in Footer */
-  ST7789_WriteString(180, 220, drumset->name, CYAN, BLACK, 2);
+  /* Show Loaded Kit Name in Footer (Right Aligned, Yellow) */
+  ST7789_WriteString(230, 220, drumset->name, YELLOW, BLACK, 2);
 
   /* 3x2 Grid Layout
    * Width 90px, Height 80px

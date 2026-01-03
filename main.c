@@ -142,6 +142,9 @@ static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t full_redraw_needed = 0;
+static volatile uint8_t needs_step_update = 0;
+static volatile uint8_t is_ui_error = 0;
+static uint32_t ui_error_start_time = 0;
 
 /* Incremental UI tracking states */
 static int last_bpm = -1;
@@ -612,22 +615,38 @@ int main(void) {
     if (mode_changed) {
       mode_changed = 0;
       last_encoder = Encoder_GetValue();
-      if (is_channel_edit_mode) {
-        DrawChannelEditScreen(1);
-        full_redraw_needed = 0;
-      } else if (is_drumset_menu_mode) {
-        DrawDrumsetMenu(1); // Ensure full redraw on mode change
-        full_redraw_needed = 0;
-      } else if (is_pattern_detail_mode) {
-        DrawStepEditScreen(1);
+
+      if (full_redraw_needed) {
+        if (is_channel_edit_mode) {
+          DrawChannelEditScreen(1);
+        } else if (is_drumset_menu_mode) {
+          DrawDrumsetMenu(1);
+        } else if (is_pattern_detail_mode) {
+          DrawStepEditScreen(1);
+        } else {
+          DrawMainScreen(current_drumset);
+        }
         full_redraw_needed = 0;
       } else {
-        if (full_redraw_needed) {
-          DrawMainScreen(current_drumset);
-          full_redraw_needed = 0;
+        /* Incremental update */
+        if (is_channel_edit_mode) {
+          DrawChannelEditScreen(0);
+        } else if (is_drumset_menu_mode) {
+          DrawDrumsetMenu(0);
+        } else if (is_pattern_detail_mode) {
+          DrawStepEditScreen(0);
         } else {
           UpdateModeUI();
         }
+      }
+    }
+
+    /* Handle Async Error Popup */
+    if (is_ui_error) {
+      if (HAL_GetTick() - ui_error_start_time > 1500) {
+        is_ui_error = 0;
+        full_redraw_needed = 1; /* Restore screen */
+        mode_changed = 1;
       }
     }
 
@@ -713,6 +732,12 @@ int main(void) {
       }
     }
 
+    /* Handle Step Toggling from Button Event */
+    if (needs_step_update) {
+      needs_step_update = 0;
+      DrawStepEditScreen(0);
+    }
+
     /* UI guards for background updates while menus are active */
     if (!is_drumset_menu_mode && !is_channel_edit_mode) {
       /* Handle UI refresh when playback stops */
@@ -729,7 +754,9 @@ int main(void) {
         /* Reset any active blinkers without full screen redraw */
         for (int i = 0; i < NUM_CHANNELS; i++) {
           if (channel_states[i]) {
-            UpdateBlinker(i, 0);
+            if (!is_pattern_edit_mode) {
+              UpdateBlinker(i, 0);
+            }
             channel_states[i] = 0;
           }
         }
@@ -1073,9 +1100,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           ExitDrumsetMenu();
         }
       } else if (button_id == BUTTON_DRUMSET) {
-        /* Back in drumset menu */
+        /* Back in drumset menu handled via state change */
         if (is_drumset_menu_mode == 1) {
-          /* Exit menu */
           ExitDrumsetMenu();
         } else {
           /* Go back to main menu */
@@ -1083,7 +1109,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           drumset_menu_index = 0;
           Encoder_SetLimits(0, 2);
           Encoder_SetValue(0);
-          DrawDrumsetMenu(1);
+          mode_changed = 1;
+          full_redraw_needed = 1;
         }
       }
     }
@@ -1115,11 +1142,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               1; /* Step grid is totally different, must clear */
           mode_changed = 1;
         } else {
-          is_pattern_detail_mode = 0;
-          Encoder_SetLimits(0, NUM_CHANNELS - 1);
-          Encoder_SetValue(selected_channel);
-          full_redraw_needed = 1; /* Returning to 3x2 grid, must clear */
-          mode_changed = 1;
+          /* Toggle Step status */
+          Sequencer_ToggleStep(selected_channel, pattern_cursor);
+          needs_step_update = 1; /* Trigger incremental update in main loop */
         }
         return;
       }
@@ -1141,21 +1166,20 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           Encoder_SetLimits(0, file_count > 0 ? file_count - 1 : 0);
           Encoder_SetValue(0);
           is_channel_edit_mode = 2;
-          DrawChannelEditScreen(1);
+          mode_changed = 1;
+          full_redraw_needed = 1;
         } else if (edit_menu_index == 1) {
           /* Go to Vol Edit */
           Encoder_SetLimits(0, 255);
           Encoder_SetValue(current_drumset->volumes[selected_channel]);
           is_channel_edit_mode = 3;
-          ST7789_FillRect(0, 80, 240, 30, BLACK); /* Clear blue selection */
-          DrawChannelEditScreen(0); /* Redraw will show edit state */
+          mode_changed = 1; /* Redraw will clear selection frame */
         } else if (edit_menu_index == 2) {
           /* Go to Pan Edit */
           Encoder_SetLimits(0, 255);
           Encoder_SetValue(current_drumset->pans[selected_channel]);
           is_channel_edit_mode = 4;
-          ST7789_FillRect(0, 120, 240, 30, BLACK); /* Clear blue selection */
-          DrawChannelEditScreen(0); /* Redraw will show edit state */
+          mode_changed = 1; /* Redraw will clear selection frame */
         }
       } else if (is_channel_edit_mode == 2) {
         /* Browser Action */
@@ -1204,7 +1228,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             last_selected_file_index = -1;
             Encoder_SetLimits(0, file_count > 0 ? file_count - 1 : 0);
             Encoder_SetValue(0);
-            DrawChannelEditScreen(1);
+            mode_changed = 1;
+            full_redraw_needed = 1;
           } else {
             /* Check for [EMPTY] */
             if (strcmp(selected->name, "[EMPTY]") == 0) {
@@ -1213,7 +1238,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               is_channel_edit_mode = 1;
               Encoder_SetLimits(0, 2);
               Encoder_SetValue(0);
-              DrawChannelEditScreen(1);
+              mode_changed = 1;
+              full_redraw_needed = 1;
             } else {
               /* Load Selected Sample */
               int res =
@@ -1231,21 +1257,15 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
                         full_path, 63);
                 current_drumset->sample_paths[selected_channel][63] = '\0';
 
-                /* Quick Preview: Trigger the sample immediately */
+                /* Quick Preview */
                 AudioMixer_Trigger(selected_channel, 255);
-
-                /* Brief visual feedback without blocking (optional, for now
-                 * just stay in list) */
-                /* No mode change - stay in Browser for rapid selection */
               } else {
-                /* Error Popup */
+                /* Draw Error Popup */
                 ST7789_FillRect(50, 100, 140, 40, BLACK);
                 ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
                 ST7789_WriteString(80, 112, "ERROR!", RED, BLACK, 2);
-
-                for (volatile int i = 0; i < 2000000; i++)
-                  ;
-                DrawChannelEditScreen(1);
+                is_ui_error = 1;
+                ui_error_start_time = HAL_GetTick();
               }
             }
           }
@@ -1255,10 +1275,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         is_channel_edit_mode = 1;
         Encoder_SetLimits(0, 2);
         Encoder_SetValue(edit_menu_index);
-        /* Don't set mode_changed = 1 to avoid full clear.
-           Force redraw of the row by invalidating last_menu_index. */
+        mode_changed = 1;
         last_menu_index = -1;
-        DrawChannelEditScreen(0);
       } else if (is_edit_mode) {
         /* Enter Channel Edit */
         TriggerChannelEdit();
@@ -1266,6 +1284,18 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         Encoder_ToggleIncrement();
       }
     } else if (button_id == BUTTON_DRUMSET) {
+      if (is_pattern_detail_mode) {
+        if (pressed) {
+          is_pattern_detail_mode = 0;
+          Encoder_SetLimits(0, NUM_CHANNELS - 1);
+          Encoder_SetValue(selected_channel);
+          full_redraw_needed = 1;
+          mode_changed = 1;
+          button_drumset_handled = 1;
+        }
+        return;
+      }
+
       if (is_channel_edit_mode == 2) {
         /* Back from Browser -> Menu */
         is_channel_edit_mode = 1; /* Go to Menu */

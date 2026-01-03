@@ -417,13 +417,15 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
           FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
       int loaded = 0;
       if (samples_cluster != 0) {
-        FAT32_FileEntry sample_files[FAT32_MAX_FILES];
+        static FAT32_FileEntry
+            sample_files[FAT32_MAX_FILES]; // Static to save stack
         int sample_count =
             FAT32_ListDir(samples_cluster, sample_files, FAT32_MAX_FILES);
 
         for (int i = 0; i < sample_count; i++) {
           if (strcasecmp(sample_files[i].name, filename_start) == 0) {
-            if (WAV_LoadSample(&sample_files[i], ch, drumset) == 0) {
+            // Fix: WAV_LoadSample returns length (>0), not error code (0)
+            if (WAV_LoadSample(&sample_files[i], ch, drumset) > 0) {
               loaded = 1;
             }
             break;

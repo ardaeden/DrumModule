@@ -120,6 +120,7 @@ void SystemClock_Config(void) {
 /* Private function prototypes */
 static void LoadTestPattern(void);
 static void DrawMainScreen(Drumset *drumset);
+static void DrawDrumsetMenu(uint8_t full_redraw);
 static void UpdateModeUI(void);
 static void UpdateBlinker(uint8_t channel, uint8_t active);
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
@@ -380,8 +381,10 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
   }
 }
 
-static void DrawDrumsetMenu(void) {
-  ST7789_Fill(BLACK);
+static void DrawDrumsetMenu(uint8_t full_redraw) {
+  if (full_redraw) {
+    ST7789_Fill(BLACK);
+  }
 
   if (is_drumset_menu_mode == 1) {
     /* Main Menu */
@@ -392,9 +395,8 @@ static void DrawDrumsetMenu(void) {
       uint16_t y_pos = 60 + (i * 40);
       uint16_t color = (i == drumset_menu_index) ? WHITE : GRAY;
 
-      if (i == drumset_menu_index) {
-        ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
-      }
+      ST7789_WriteString(10, y_pos, (i == drumset_menu_index) ? ">" : " ",
+                         YELLOW, BLACK, 2);
       ST7789_WriteString(40, y_pos, menu_items[i], color, BLACK, 2);
     }
   } else if (is_drumset_menu_mode == 2) {
@@ -432,9 +434,8 @@ static void DrawDrumsetMenu(void) {
       }
 
       uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
-      if (slot_num == selected_slot) {
-        ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
-      }
+      ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
+                         YELLOW, BLACK, 2);
       ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
     }
   } else if (is_drumset_menu_mode == 3) {
@@ -464,9 +465,8 @@ static void DrawDrumsetMenu(void) {
           snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]", slot_num);
 
           uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
-          if (slot_num == selected_slot) {
-            ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
-          }
+          ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
+                             YELLOW, BLACK, 2);
           ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
         }
       }
@@ -598,7 +598,7 @@ int main(void) {
         DrawChannelEditScreen(1);
         full_redraw_needed = 0;
       } else if (is_drumset_menu_mode) {
-        DrawDrumsetMenu();
+        DrawDrumsetMenu(1); // Ensure full redraw on mode change
         full_redraw_needed = 0;
       } else {
         if (full_redraw_needed) {
@@ -618,7 +618,7 @@ int main(void) {
         drumset_menu_index = 0;
         Encoder_SetLimits(0, 2);
         Encoder_SetValue(0);
-        DrawDrumsetMenu();
+        DrawDrumsetMenu(1); /* Full redraw on entry */
         button_edit_handled = 1;
       }
     }
@@ -643,16 +643,16 @@ int main(void) {
       if (is_drumset_menu_mode == 1) {
         /* Drumset menu navigation */
         drumset_menu_index = encoder_val;
-        DrawDrumsetMenu();
+        DrawDrumsetMenu(0); /* Partial redraw */
       } else if (is_drumset_menu_mode == 2) {
         /* Save slot selection */
         selected_slot = (uint8_t)encoder_val;
-        DrawDrumsetMenu();
+        DrawDrumsetMenu(0); /* Partial redraw */
       } else if (is_drumset_menu_mode == 3) {
         /* Load slot selection - encoder value is index in occupied_slots */
         if (encoder_val >= 0 && encoder_val < occupied_slot_count) {
           selected_slot = occupied_slots[encoder_val];
-          DrawDrumsetMenu();
+          DrawDrumsetMenu(0); /* Partial redraw */
         }
       } else if (is_channel_edit_mode == 1) {
         edit_menu_index = encoder_val;
@@ -998,24 +998,23 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         if (is_drumset_menu_mode == 1) {
           /* Main menu selection */
           if (drumset_menu_index == 0) {
-            /* SAVE */
+            /* SAVE Kit */
             occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
-            selected_slot = 1;
+            is_drumset_menu_mode = 2; /* Save Slot Selection */
             Encoder_SetLimits(1, 100);
-            Encoder_SetValue(1);
-            is_drumset_menu_mode = 2;
-            DrawDrumsetMenu();
+            Encoder_SetValue(selected_slot);
+            DrawDrumsetMenu(1); /* Full redraw for mode change */
           } else if (drumset_menu_index == 1) {
-            /* LOAD */
+            /* LOAD Kit */
             occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
+            is_drumset_menu_mode = 3; /* Load Slot Selection */
             if (occupied_slot_count > 0) {
-              selected_slot = occupied_slots[0];
               Encoder_SetLimits(0, occupied_slot_count - 1);
               Encoder_SetValue(0);
-              is_drumset_menu_mode = 3;
-              DrawDrumsetMenu();
+              selected_slot = occupied_slots[0];
             }
-          } else {
+            DrawDrumsetMenu(1); /* Full redraw for mode change */
+          } else if (drumset_menu_index == 2) {
             /* BACK */
             ExitDrumsetMenu();
           }
@@ -1046,7 +1045,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           is_drumset_menu_mode = 1;
           Encoder_SetLimits(0, 2);
           Encoder_SetValue(0);
-          DrawDrumsetMenu();
+          DrawDrumsetMenu(1); // Full redraw for mode change
         } else if (is_drumset_menu_mode == 3) {
           /* Load from selected slot */
           int result = Drumset_LoadFromSlot(current_drumset, selected_slot);
@@ -1081,7 +1080,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           drumset_menu_index = 0;
           Encoder_SetLimits(0, 2);
           Encoder_SetValue(0);
-          DrawDrumsetMenu();
+          DrawDrumsetMenu(1);
         }
       }
     }

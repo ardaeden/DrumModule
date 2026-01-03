@@ -846,13 +846,9 @@ static void DrawMainScreen(Drumset *drumset) {
   snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
   ST7789_WriteString(255, 10, step_buf, WHITE, BLACK, 2);
 
-  /* Status indicator */
-  const char *status = is_playing ? "PLAYING" : "STOPPED";
+  /* Status indicator - Always show PLAY/STOP for clarity */
+  const char *status = is_playing ? "PLAYING      " : "STOPPED      ";
   uint16_t status_color = is_playing ? GREEN : RED;
-  if (is_edit_mode) {
-    status = "EDIT CH";
-    status_color = YELLOW;
-  }
   ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* 3x2 Grid Layout
@@ -904,27 +900,34 @@ static void DrawMainScreen(Drumset *drumset) {
 }
 
 static void UpdateModeUI(void) {
-  /* Update Header */
-  if (is_edit_mode) {
-    ST7789_FillRect(10, 10, 200, 20, BLACK); /* Clear Header Area */
-    ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
-  } else {
-    ST7789_FillRect(10, 10, 200, 20, BLACK); /* Clear Header Area */
-    ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
-    char val_buf[16];
-    snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
-    ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+  static int last_bpm = -1;
+  static int last_is_edit = -1;
+  static int last_is_playing = -1;
+
+  int current_bpm = (int)Encoder_GetValue();
+
+  /* Update Header only on mode or BPM change */
+  if (is_edit_mode != last_is_edit ||
+      (!is_edit_mode && current_bpm != last_bpm)) {
+    if (is_edit_mode) {
+      /* Overwrite with padded string */
+      ST7789_WriteString(10, 10, "DRUMSET EDIT      ", YELLOW, BLACK, 2);
+    } else {
+      char val_buf[20];
+      snprintf(val_buf, sizeof(val_buf), "BPM: %d        ", current_bpm);
+      ST7789_WriteString(10, 10, val_buf, CYAN, BLACK, 2);
+    }
+    last_is_edit = is_edit_mode;
+    last_bpm = current_bpm;
   }
 
-  /* Update Status Footer */
-  const char *status = is_playing ? "PLAYING" : "STOPPED";
-  uint16_t status_color = is_playing ? GREEN : RED;
-  if (is_edit_mode) {
-    status = "EDIT CH";
-    status_color = YELLOW;
+  /* Update Status Footer only on playback state change */
+  if (is_playing != last_is_playing) {
+    const char *status = is_playing ? "PLAYING      " : "STOPPED      ";
+    uint16_t status_color = is_playing ? GREEN : RED;
+    ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
+    last_is_playing = is_playing;
   }
-  ST7789_FillRect(10, 220, 200, 20, BLACK); /* Clear Status Area */
-  ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* Handle Channel Highlight */
   static uint8_t last_drawn_channel = 0xFF;

@@ -501,6 +501,7 @@ static void TriggerChannelEdit(void) {
   Encoder_SetLimits(0, 2); /* 3 Menu Items */
   Encoder_SetValue(0);
   mode_changed = 1;
+  full_redraw_needed = 1;
 }
 static void ExitChannelEdit(void) {
   is_channel_edit_mode = 0;
@@ -823,7 +824,9 @@ int main(void) {
         for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
           if (channel_states[i] &&
               (HAL_GetTick() - channel_blink_times[i] > 100)) {
-            if (!is_pattern_edit_mode) {
+            /* Guard: Don't unhighlight the manual selection in Edit Mode */
+            if (!is_pattern_edit_mode &&
+                !(is_edit_mode && i == selected_channel)) {
               UpdateBlinker(i, 0);
             }
             channel_states[i] = 0;
@@ -1094,14 +1097,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             /* BACK */
             ExitDrumsetMenu();
           }
-          is_drumset_menu_mode =
-              2; /* Still in Save (error state handled by redraw) */
-          mode_changed = 1;
-          full_redraw_needed = 1;
+        } else if (is_drumset_menu_mode == 2) {
+          /* SAVE Action */
+          Drumset_Save(current_drumset, selected_slot);
+          ExitDrumsetMenu();
         } else if (is_drumset_menu_mode == 3) {
+          /* LOAD Action */
           Drumset_LoadFromSlot(current_drumset, selected_slot);
-          /* Exit menu or stay for feedback? Let's just exit for timing safety
-           */
           ExitDrumsetMenu();
         }
       } else if (button_id == BUTTON_DRUMSET) {

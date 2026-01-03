@@ -1177,18 +1177,12 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               int res =
                   WAV_LoadSample(selected, selected_channel, current_drumset);
               if (res > 0) {
-                /* Success Popup */
-                ST7789_FillRect(50, 100, 140, 40, BLACK);
-                ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-                ST7789_WriteString(75, 112, "LOADED!", GREEN, BLACK, 2);
+                /* Quick Preview: Trigger the sample immediately */
+                AudioMixer_Trigger(selected_channel, 255);
 
-                for (volatile int i = 0; i < 2000000; i++)
-                  ;
-                /* Return to Menu */
-                is_channel_edit_mode = 1;
-                Encoder_SetLimits(0, 2);
-                Encoder_SetValue(0);
-                DrawChannelEditScreen(1);
+                /* Brief visual feedback without blocking (optional, for now
+                 * just stay in list) */
+                /* No mode change - stay in Browser for rapid selection */
               } else {
                 /* Error Popup */
                 ST7789_FillRect(50, 100, 140, 40, BLACK);

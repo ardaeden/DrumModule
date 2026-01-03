@@ -391,7 +391,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
     /* Main Menu */
     ST7789_WriteString(10, 10, "DRUMSET MENU", YELLOW, BLACK, 2);
 
-    const char *menu_items[] = {"SAVE", "LOAD", "BACK"};
+    const char *menu_items[] = {"LOAD", "SAVE", "BACK"};
     for (int i = 0; i < 3; i++) {
       uint16_t y_pos = 60 + (i * 40);
       uint16_t color = (i == drumset_menu_index) ? WHITE : GRAY;
@@ -622,8 +622,8 @@ int main(void) {
     /* Long-press detection for Drumset Menu - only if not playing */
     if (button_edit_pressed && !button_edit_handled && !is_drumset_menu_mode &&
         !is_playing) {
-      if (HAL_GetTick() - button_edit_start_time >= 1000) {
-        /* Long-press (1s) detected */
+      if (HAL_GetTick() - button_edit_start_time >= 500) {
+        /* Long-press (0.5s) detected */
         is_drumset_menu_mode = 1;
         drumset_menu_index = 0;
         Encoder_SetLimits(0, 2);
@@ -1011,13 +1011,6 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         if (is_drumset_menu_mode == 1) {
           /* Main menu selection */
           if (drumset_menu_index == 0) {
-            /* SAVE Kit */
-            occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
-            is_drumset_menu_mode = 2; /* Save Slot Selection */
-            Encoder_SetLimits(1, 100);
-            Encoder_SetValue(selected_slot);
-            DrawDrumsetMenu(1); /* Full redraw for mode change */
-          } else if (drumset_menu_index == 1) {
             /* LOAD Kit */
             occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
             is_drumset_menu_mode = 3; /* Load Slot Selection */
@@ -1026,6 +1019,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               Encoder_SetValue(0);
               selected_slot = occupied_slots[0];
             }
+            DrawDrumsetMenu(1); /* Full redraw for mode change */
+          } else if (drumset_menu_index == 1) {
+            /* SAVE Kit */
+            occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
+            is_drumset_menu_mode = 2; /* Save Slot Selection */
+            Encoder_SetLimits(1, 100);
+            Encoder_SetValue(selected_slot);
             DrawDrumsetMenu(1); /* Full redraw for mode change */
           } else if (drumset_menu_index == 2) {
             /* BACK */

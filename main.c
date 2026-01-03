@@ -1021,9 +1021,111 @@ static void UpdateBlinker(uint8_t channel, uint8_t active) {
 static void DrawPatternEditScreen(uint8_t full_redraw) {
   if (full_redraw) {
     ST7789_Fill(BLACK);
+    ST7789_WriteString(10, 10, "PATTERN EDIT", CYAN, BLACK, 2);
+
+    /* Show Selected Channel */
+    char ch_buf[16];
+    snprintf(ch_buf, sizeof(ch_buf), "CH: %d", selected_channel + 1);
+    uint16_t ch_color = WHITE;
+    switch (selected_channel) {
+    case 0:
+      ch_color = RED;
+      break;
+    case 1:
+      ch_color = GREEN;
+      break;
+    case 2:
+      ch_color = YELLOW;
+      break;
+    case 3:
+      ch_color = MAGENTA;
+      break;
+    case 4:
+      ch_color = CYAN;
+      break;
+    case 5:
+      ch_color = ORANGE;
+      break;
+    }
+    ST7789_WriteString(150, 10, ch_buf, ch_color, BLACK, 2);
   }
-  ST7789_WriteString(10, 10, "PATTERN EDIT MODE", CYAN, BLACK, 2);
-  ST7789_WriteString(10, 100, "COMING SOON...", WHITE, BLACK, 2);
+
+  /* Grid Constants */
+  const uint16_t BOX_W = 22;
+  const uint16_t BOX_H = 30;
+  const uint16_t GAP = 4;
+  const uint16_t GROUP_GAP = 8; /* Extra gap between groups of 4 */
+  const uint16_t START_X = 14;
+  const uint16_t ROW1_Y = 50; /* Shifted up */
+  const uint16_t ROW2_Y = 90;
+  const uint16_t ROW3_Y = 130;
+  const uint16_t ROW4_Y = 170;
+
+  for (int i = 0; i < 32; i++) {
+    int col = i % 8;
+    int row = i / 8;
+
+    /* Add extra gap after 4th item (index 3 in row) */
+    uint16_t x = START_X + col * (BOX_W + GAP) + (col / 4) * GROUP_GAP;
+
+    uint16_t y;
+    if (row == 0)
+      y = ROW1_Y;
+    else if (row == 1)
+      y = ROW2_Y;
+    else if (row == 2)
+      y = ROW3_Y;
+    else
+      y = ROW4_Y;
+
+    /* Get Step Status */
+    uint8_t velocity = Sequencer_GetStep(selected_channel, i);
+    uint8_t active = (velocity > 0);
+
+    /* Determine Color */
+    /* Light Grey for inactive (Brighter than 0x3186) */
+    uint16_t color = 0x8C71;
+
+    if (active) {
+      switch (selected_channel) {
+      case 0:
+        color = RED;
+        break;
+      case 1:
+        color = GREEN;
+        break;
+      case 2:
+        color = YELLOW;
+        break;
+      case 3:
+        color = MAGENTA;
+        break;
+      case 4:
+        color = CYAN;
+        break;
+      case 5:
+        color = ORANGE;
+        break;
+      }
+    }
+
+    /* Draw Box (Outline Style) */
+    /* Clear inside first */
+    ST7789_FillRect(x, y, BOX_W, BOX_H, BLACK);
+
+    if (active) {
+      ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, color);
+    } else {
+      ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, color);
+    }
+
+    /* Numbering */
+    char num_buf[4];
+    snprintf(num_buf, sizeof(num_buf), "%d", i + 1);
+    /* Contrast Color */
+    uint16_t text_color = active ? color : 0xCE79; // Brighter Grey for text
+    ST7789_WriteString(x + 5, y + 10, num_buf, text_color, BLACK, 1);
+  }
 }
 
 static void OnButtonEvent(ButtonID button_id, uint8_t pressed) {
@@ -1289,8 +1391,8 @@ static void OnButtonEvent(ButtonID button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        /* Only track EDIT button if not playing */
-        if (!is_playing) {
+        /* Only track EDIT button if not playing AND not in pattern edit mode */
+        if (!is_playing && !is_pattern_edit_mode) {
           button_edit_pressed = 1;
           button_edit_start_time = HAL_GetTick();
           button_edit_handled = 0;

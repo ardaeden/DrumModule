@@ -805,6 +805,11 @@ int main(void) {
             }
           }
 
+          /* Update Step Edit screen playhead if active */
+          if (is_pattern_detail_mode) {
+            DrawStepEditScreen(0);
+          }
+
           /* LED Blink on quarter notes */
           if ((step % 4) == 0) {
             GPIOC_ODR &= ~(1 << 13); /* ON */
@@ -1381,9 +1386,11 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
   const int START_Y = 50;
 
   static int last_cursor = -1;
+  static int last_play_step = -1;
 
   uint16_t ch_color = GetChannelColor(selected_channel);
   uint16_t bg_box_color = 0x2104;
+  uint8_t current_play_step = is_playing ? Sequencer_GetCurrentStep() : 0xFF;
 
   if (full_redraw) {
     ST7789_Fill(BLACK);
@@ -1399,6 +1406,7 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
                        ch_color, BLACK, 1);
 
     last_cursor = -1;
+    last_play_step = -1;
   }
 
   /* Draw 32 steps (4x8 grid) */
@@ -1408,26 +1416,31 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
     int x = START_X + col * (BOX_W + GAP_X);
     int y = START_Y + row * (BOX_H + GAP_Y);
 
-    uint8_t velocity = Sequencer_GetStep(selected_channel, i);
-    uint16_t step_color = (velocity > 0) ? ch_color : bg_box_color;
+    /* Incremental update: Redraw only if full_redraw, or if cursor/playhead
+     * is/was here */
+    if (full_redraw || i == pattern_cursor || i == last_cursor ||
+        i == current_play_step || i == last_play_step) {
 
-    /* Incremental update: Redraw only if full_redraw, or if cursor is/was here
-     */
-    if (full_redraw || i == pattern_cursor || i == last_cursor) {
+      uint8_t velocity = Sequencer_GetStep(selected_channel, i);
+      uint16_t step_color = (velocity > 0) ? ch_color : bg_box_color;
+
+      /* Draw Base Box */
+      ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
+
+      /* Selection Frames (Priority: Manual Cursor > Playhead) */
       if (i == pattern_cursor) {
-        /* Selected Step: Highlighted */
-        ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
+        /* Manual Selection: White thick frame */
         ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
-      } else {
-        /* Regular Step: Simple colored box */
-        ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
-        /* If it was the last cursor, we need to clear its white frame */
-        if (i == last_cursor) {
-          ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, BLACK);
-        }
+      } else if (i == current_play_step) {
+        /* Playhead: Bright Green frame */
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, GREEN);
+      } else if (i == last_play_step || i == last_cursor) {
+        /* Clear old frames */
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, BLACK);
       }
     }
   }
 
   last_cursor = pattern_cursor;
+  last_play_step = current_play_step;
 }

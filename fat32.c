@@ -430,7 +430,7 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   char ext_part[4] = {' ', ' ', ' ', '\0'};
 
   const char *dot = strchr(filename, '.');
-  int name_len = dot ? (dot - filename) : strlen(filename);
+  int name_len = dot ? (int)(dot - filename) : (int)strlen(filename);
   if (name_len > 8)
     name_len = 8;
 

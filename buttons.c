@@ -55,7 +55,7 @@
 /* State */
 static ButtonCallback button_callback = 0;
 static volatile uint8_t buttons_active_mask =
-    0; /* Bit 0: Start, Bit 1: Encoder, Bit 2: Edit */
+    0; /* Bit 0: Start, Bit 1: Encoder, Bit 2: Edit, Bit 3: Pattern */
 
 void Button_Init(void) {
   /* Enable clocks */
@@ -79,6 +79,22 @@ void Button_Init(void) {
   EXTI_RTSR &= ~(1 << 0);
   EXTI_IMR |= (1 << 0);
   NVIC_ISER0 |= (1 << 6); /* IRQ 6 */
+
+  /* --- Configure PB1 (Pattern Button) --- */
+  /* Input, Pull-Up */
+  GPIOB_MODER &= ~(3UL << (1 * 2));
+  GPIOB_PUPDR &= ~(3UL << (1 * 2));
+  GPIOB_PUPDR |= (1UL << (1 * 2));
+
+  /* PB1 -> EXTI1 (Port B = 0001) */
+  SYSCFG_EXTICR1 &= ~(0xF << 4);
+  SYSCFG_EXTICR1 |= (1 << 4);
+
+  /* EXTI1 Falling edge */
+  EXTI_FTSR |= (1 << 1);
+  EXTI_RTSR &= ~(1 << 1);
+  EXTI_IMR |= (1 << 1);
+  NVIC_ISER0 |= (1 << 7); /* IRQ 7 */
 
   /* --- Configure PB8 (Encoder Button), PB6, PB7 --- */
   /* Note: Encoder_Init already sets pull-ups for B6-B8 */
@@ -141,6 +157,16 @@ void EXTI0_IRQHandler(void) {
   }
 }
 
+void EXTI1_IRQHandler(void) {
+  if (EXTI_PR & (1 << 1)) {
+    EXTI_PR = (1 << 1);
+    EXTI_IMR &= ~(1 << 1); /* Mask EXTI1 */
+    buttons_active_mask |= (1 << BUTTON_PATTERN);
+    TIM5_CNT = 0;
+    TIM5_CR1 |= (1 << 0); /* Start timer */
+  }
+}
+
 void EXTI9_5_IRQHandler(void) {
   uint32_t pr = EXTI_PR;
 
@@ -163,7 +189,7 @@ void EXTI9_5_IRQHandler(void) {
   if (pr & (1 << 9)) {
     EXTI_PR = (1 << 9);
     EXTI_IMR &= ~(1 << 9); /* Mask EXTI9 */
-    buttons_active_mask |= (1 << BUTTON_EDIT);
+    buttons_active_mask |= (1 << BUTTON_DRUMSET);
     TIM5_CNT = 0;
     TIM5_CR1 |= (1 << 0); /* Start timer */
   }
@@ -195,13 +221,23 @@ void TIM5_IRQHandler(void) {
     }
 
     /* Check Edit Button (PB9) */
-    if (buttons_active_mask & (1 << BUTTON_EDIT)) {
+    if (buttons_active_mask & (1 << BUTTON_DRUMSET)) {
       uint8_t val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
       if (val == 0) {
         if (button_callback)
-          button_callback(BUTTON_EDIT, 1);
+          button_callback(BUTTON_DRUMSET, 1);
       }
       EXTI_IMR |= (1 << 9); /* Unmask */
+    }
+
+    /* Check Pattern Button (PB1) */
+    if (buttons_active_mask & (1 << BUTTON_PATTERN)) {
+      uint8_t val = (GPIOB_IDR & (1 << 1)) ? 1 : 0;
+      if (val == 0) {
+        if (button_callback)
+          button_callback(BUTTON_PATTERN, 1);
+      }
+      EXTI_IMR |= (1 << 1); /* Unmask */
     }
 
     buttons_active_mask = 0;

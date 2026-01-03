@@ -236,7 +236,7 @@ int Drumset_Save(Drumset *drumset, uint8_t slot) {
         snprintf(buffer + offset, sizeof(buffer) - offset, "%d,%s,%d,%d\n", ch,
                  sample_path, drumset->volumes[ch], drumset->pans[ch]);
 
-    if (written < 0 || offset + written >= sizeof(buffer)) {
+    if (written < 0 || (offset + (uint32_t)written) >= sizeof(buffer)) {
       return -1; // Buffer overflow
     }
 

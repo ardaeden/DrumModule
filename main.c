@@ -133,11 +133,20 @@ static volatile uint8_t is_channel_edit_mode = 0;
 static volatile uint8_t selected_channel = 0;
 static volatile uint32_t saved_bpm = 120;
 static volatile uint8_t mode_changed = 0;
+static volatile uint8_t is_pattern_edit_mode = 0;
+static volatile int8_t pattern_cursor = 0;
 
 static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t full_redraw_needed = 0;
+
+/* Incremental UI tracking states */
+static int last_bpm = -1;
+static int last_is_edit = -1;
+static int last_is_pattern_edit = -1;
+static int last_is_playing = -1;
+static uint8_t last_drawn_channel = 0xFF;
 
 static FAT32_FileEntry file_list[FAT32_MAX_FILES];
 static int file_count = 0;
@@ -157,9 +166,9 @@ static uint8_t occupied_slots[100]; /* List of occupied slots */
 static int occupied_slot_count = 0;
 
 /* Long-press detection */
-static uint32_t button_edit_start_time = 0;
-static uint8_t button_edit_handled = 0;
-static uint8_t button_edit_pressed = 0;
+static uint32_t button_drumset_start_time = 0;
+static uint8_t button_drumset_handled = 0;
+static uint8_t button_drumset_pressed = 0;
 
 /* Helper: case-insensitive string ends with check */
 static int str_ends_with(const char *str, const char *suffix) {
@@ -618,25 +627,26 @@ int main(void) {
     }
 
     /* Long-press detection for Drumset Menu - only if not playing */
-    if (button_edit_pressed && !button_edit_handled && !is_drumset_menu_mode &&
-        !is_playing) {
-      if (HAL_GetTick() - button_edit_start_time >= 500) {
+    if (button_drumset_pressed && !button_drumset_handled &&
+        !is_drumset_menu_mode && !is_playing && !is_pattern_edit_mode) {
+      if (HAL_GetTick() - button_drumset_start_time >= 500) {
         /* Long-press (0.5s) detected */
         is_drumset_menu_mode = 1;
         drumset_menu_index = 0;
         Encoder_SetLimits(0, 2);
         Encoder_SetValue(0);
         DrawDrumsetMenu(1); /* Full redraw on entry */
-        button_edit_handled = 1;
+        button_drumset_handled = 1;
       }
     }
 
     /* Robust EDIT button release detection by polling GPIO (PB9 is Bit 9) */
-    if (button_edit_pressed) {
+    if (button_drumset_pressed) {
       uint8_t current_val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
       if (current_val == 1) { /* Physcially released (Pull-up) */
-        button_edit_pressed = 0;
-        if (!button_edit_handled && !is_drumset_menu_mode && !is_playing) {
+        button_drumset_pressed = 0;
+        if (!button_drumset_handled && !is_drumset_menu_mode && !is_playing &&
+            !is_pattern_edit_mode) {
           /* Short press (Click) detected - toggle edit mode */
           ToggleEditMode();
         }
@@ -678,8 +688,8 @@ int main(void) {
         current_drumset->pans[selected_channel] = (uint8_t)encoder_val;
         AudioMixer_SetPan(selected_channel, (uint8_t)encoder_val);
         DrawChannelEditScreen(0);
-      } else if (is_edit_mode) {
-        /* Handle Channel Selection */
+      } else if (is_edit_mode || is_pattern_edit_mode) {
+        /* Handle Channel Selection in both Normal Edit and Pattern Edit */
         selected_channel = (uint8_t)encoder_val;
         mode_changed = 1; // Trigger UI update for channel highlight
       } else {
@@ -751,7 +761,9 @@ int main(void) {
           for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
             uint8_t velocity = Sequencer_GetStep(i, step);
             if (velocity > 0) {
-              UpdateBlinker(i, 1);
+              if (!is_pattern_edit_mode) {
+                UpdateBlinker(i, 1);
+              }
               channel_states[i] = 1;
               channel_blink_times[i] =
                   HAL_GetTick(); // Record time for blink duration
@@ -771,7 +783,9 @@ int main(void) {
         for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
           if (channel_states[i] &&
               (HAL_GetTick() - channel_blink_times[i] > 100)) {
-            UpdateBlinker(i, 0);
+            if (!is_pattern_edit_mode) {
+              UpdateBlinker(i, 0);
+            }
             channel_states[i] = 0;
           }
         }
@@ -831,7 +845,9 @@ static void LoadTestPattern(void) {
 static void DrawMainScreen(Drumset *drumset) {
   ST7789_Fill(BLACK);
 
-  if (is_edit_mode) {
+  if (is_pattern_edit_mode) {
+    ST7789_WriteString(10, 10, "PATTERN EDIT", CYAN, BLACK, 2);
+  } else if (is_edit_mode) {
     ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
   } else {
     ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
@@ -894,23 +910,30 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
   ST7789_WriteString(285, 195, "6", ORANGE, BLACK, 1); /* Channel number */
 
-  /* Highlight selected channel if in edit mode */
-  if (is_edit_mode) {
+  /* Highlight selected channel if in edit mode or pattern mode */
+  if (is_edit_mode || is_pattern_edit_mode) {
     UpdateBlinker(selected_channel, 1);
   }
+
+  /* Sync incremental UI states to match the full redraw results */
+  last_bpm = (int)Encoder_GetValue();
+  last_is_edit = is_edit_mode;
+  last_is_pattern_edit = is_pattern_edit_mode;
+  last_is_playing = is_playing;
+  last_drawn_channel =
+      (is_edit_mode || is_pattern_edit_mode) ? selected_channel : 0xFF;
 }
 
 static void UpdateModeUI(void) {
-  static int last_bpm = -1;
-  static int last_is_edit = -1;
-  static int last_is_playing = -1;
-
   int current_bpm = (int)Encoder_GetValue();
 
   /* Update Header only on mode or BPM change */
-  if (is_edit_mode != last_is_edit ||
-      (!is_edit_mode && current_bpm != last_bpm)) {
-    if (is_edit_mode) {
+  if (is_pattern_edit_mode != last_is_pattern_edit ||
+      is_edit_mode != last_is_edit ||
+      (!is_edit_mode && !is_pattern_edit_mode && current_bpm != last_bpm)) {
+    if (is_pattern_edit_mode) {
+      ST7789_WriteString(10, 10, "PATTERN EDIT      ", CYAN, BLACK, 2);
+    } else if (is_edit_mode) {
       /* Overwrite with padded string */
       ST7789_WriteString(10, 10, "DRUMSET EDIT      ", YELLOW, BLACK, 2);
     } else {
@@ -918,6 +941,7 @@ static void UpdateModeUI(void) {
       snprintf(val_buf, sizeof(val_buf), "BPM: %d        ", current_bpm);
       ST7789_WriteString(10, 10, val_buf, WHITE, BLACK, 2);
     }
+    last_is_pattern_edit = is_pattern_edit_mode;
     last_is_edit = is_edit_mode;
     last_bpm = current_bpm;
   }
@@ -931,8 +955,7 @@ static void UpdateModeUI(void) {
   }
 
   /* Handle Channel Highlight */
-  static uint8_t last_drawn_channel = 0xFF;
-  if (is_edit_mode) {
+  if (is_edit_mode || is_pattern_edit_mode) {
     if (last_drawn_channel != selected_channel) {
       /* Unhighlight previous if it was valid */
       if (last_drawn_channel < NUM_CHANNELS) {
@@ -1080,7 +1103,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           /* Exit menu */
           ExitDrumsetMenu();
         }
-      } else if (button_id == BUTTON_EDIT) {
+      } else if (button_id == BUTTON_DRUMSET) {
         /* Back in drumset menu */
         if (is_drumset_menu_mode == 1) {
           /* Exit menu */
@@ -1113,6 +1136,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         needs_ui_refresh = 1;
       }
     } else if (button_id == BUTTON_ENCODER) {
+      if (is_pattern_edit_mode)
+        return;
+
       if (is_channel_edit_mode == 1) {
         /* MENU SELECTION */
         if (edit_menu_index == 0) {
@@ -1254,7 +1280,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else {
         Encoder_ToggleIncrement();
       }
-    } else if (button_id == BUTTON_EDIT) {
+    } else if (button_id == BUTTON_DRUMSET) {
       if (is_channel_edit_mode == 2) {
         /* Back from Browser -> Menu */
         is_channel_edit_mode = 1; /* Go to Menu */
@@ -1264,15 +1290,45 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        /* Only track EDIT button if not playing */
         if (!is_playing) {
-          button_edit_pressed = 1;
-          button_edit_start_time = HAL_GetTick();
-          button_edit_handled = 0;
+          button_drumset_pressed = 1;
+          button_drumset_start_time = HAL_GetTick();
+          button_drumset_handled = 0;
+        }
+      }
+    } else if (button_id == BUTTON_PATTERN) {
+      if (pressed) {
+        /* Toggle Pattern Edit Mode - Block if in Drumset Edit or other menus */
+        if (!is_drumset_menu_mode && !is_channel_edit_mode && !is_edit_mode) {
+          is_pattern_edit_mode = !is_pattern_edit_mode;
+          mode_changed = 1;
+
+          if (is_pattern_edit_mode) {
+            /* Clear any active playback highlights */
+            for (int i = 0; i < NUM_CHANNELS; i++) {
+              if (channel_states[i]) {
+                UpdateBlinker(i, 0);
+                channel_states[i] = 0;
+              }
+            }
+            Encoder_SetLimits(0, NUM_CHANNELS - 1);
+            Encoder_SetValue(selected_channel);
+            UpdateBlinker(selected_channel,
+                          1); /* Ensure selection is visible */
+          } else {
+            /* Return to previous limits */
+            if (is_edit_mode) {
+              Encoder_SetLimits(0, NUM_CHANNELS - 1);
+              Encoder_SetValue(selected_channel);
+            } else {
+              Encoder_SetLimits(30, 300);
+              Encoder_SetValue(Sequencer_GetBPM());
+            }
+          }
         }
       }
     }
   } else {
-    /* Button released - Handled in main loop polling for BUTTON_EDIT */
+    /* Button released - Handled in main loop polling for BUTTON_DRUMSET */
   }
 }

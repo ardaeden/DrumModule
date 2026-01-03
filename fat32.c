@@ -155,21 +155,21 @@ static void copy_filename(char *dest, uint8_t *src) {
 static uint32_t allocate_free_cluster(void) {
   uint32_t fat_sector = partition_start_lba + reserved_sectors;
 
-  /* Scan FAT sectors (up to 10 sectors for now to keep it fast) */
-  for (int s = 0; s < 10; s++) {
+  /* Scan FAT sectors (up to 200 sectors to cover larger cards) */
+  for (int s = 0; s < 200; s++) {
     if (SDCARD_ReadBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
       return 0;
     }
 
     for (int i = 0; i < 128; i++) {
-      uint32_t entry = read_u32(sector_buffer, i * 4);
+      uint32_t entry = read_u32(sector_buffer, i * 4) & 0x0FFFFFFF;
       if (entry == 0x00000000) {
         /* Found free cluster */
         uint32_t cluster = (s * 128) + i;
         if (cluster < 2)
-          continue; /* Skip reserved clusters */
+          continue;
 
-        /* Mark it as occupied (EOF) */
+        /* Mark as EOF (End of Chain) */
         write_u32(sector_buffer, i * 4, 0x0FFFFFFF);
         if (SDCARD_WriteBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
           return 0;
@@ -396,6 +396,15 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   }
 
   uint8_t *dir_entry = sector_buffer + (use_entry * 32);
+
+  // If new entry, clear it first
+  if (found_entry == -1) {
+    memset(dir_entry, 0, 32);
+
+    // Also mark next entry as 0x00 if we used a 0x00 entry
+    // to maintain end-of-directory marker if possible,
+    // but in simple implementation we just write the entry.
+  }
 
   // Parse filename into 8.3 format
   char name_part[9] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '\0'};

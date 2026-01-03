@@ -139,7 +139,6 @@ static uint8_t selected_slot = 1;   /* Current slot selection (1-100) */
 static uint8_t occupied_slots[100]; /* List of occupied slots */
 static int occupied_slot_count = 0;
 static uint32_t button_edit_click_count = 0; /* For double-click detection */
-static uint32_t button_edit_last_click_time = 0;
 
 /* Helper: case-insensitive string ends with check */
 static int str_ends_with(const char *str, const char *suffix) {
@@ -955,7 +954,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
           } else {
             ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
-            ST7789_WriteString(35, 122, "No DRUMSETS?", YELLOW, BLACK, 1);
+            char err_msg[20];
+            snprintf(err_msg, sizeof(err_msg), "Code: %d", result);
+            ST7789_WriteString(50, 122, err_msg, YELLOW, BLACK, 1);
           }
 
           for (volatile int i = 0; i < 2000000; i++)

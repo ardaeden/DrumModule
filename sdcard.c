@@ -6,6 +6,7 @@
 #define CMD0 0    /* GO_IDLE_STATE */
 #define CMD8 8    /* SEND_IF_COND */
 #define CMD17 17  /* READ_SINGLE_BLOCK */
+#define CMD24 24  /* WRITE_SINGLE_BLOCK */
 #define CMD55 55  /* APP_CMD */
 #define CMD58 58  /* READ_OCR */
 #define ACMD41 41 /* SD_SEND_OP_COND */
@@ -194,3 +195,60 @@ int SDCARD_ReadBlock(uint32_t block_addr, uint8_t *buffer) {
 }
 
 uint8_t SDCARD_GetType(void) { return card_type; }
+
+int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer) {
+  uint8_t response;
+  uint16_t timeout;
+
+  /* For non-SDHC cards, convert block address to byte address */
+  if (card_type != SDCARD_TYPE_SDHC) {
+    block_addr *= 512;
+  }
+
+  /* Select card */
+  SDCARD_SPI_CS_Low();
+
+  /* CMD24: Write single block */
+  response = SDCARD_SendCommand(CMD24, block_addr);
+  if (response != R1_READY) {
+    SDCARD_SPI_CS_High();
+    return SDCARD_ERROR_READ;
+  }
+
+  /* Send data start token */
+  SDCARD_SPI_TransmitReceive(DATA_START_TOKEN);
+
+  /* Write 512 bytes */
+  for (int i = 0; i < 512; i++) {
+    SDCARD_SPI_TransmitReceive(buffer[i]);
+  }
+
+  /* Send dummy CRC (2 bytes) */
+  SDCARD_SPI_TransmitReceive(0xFF);
+  SDCARD_SPI_TransmitReceive(0xFF);
+
+  /* Read data response token */
+  response = SDCARD_SPI_TransmitReceive(0xFF);
+  if ((response & 0x1F) != 0x05) {
+    SDCARD_SPI_CS_High();
+    return SDCARD_ERROR_READ;
+  }
+
+  /* Wait for card to finish writing (busy signal) */
+  timeout = 0xFFFF;
+  do {
+    response = SDCARD_SPI_TransmitReceive(0xFF);
+    timeout--;
+  } while ((response == 0x00) && (timeout > 0));
+
+  if (timeout == 0) {
+    SDCARD_SPI_CS_High();
+    return SDCARD_ERROR_TIMEOUT;
+  }
+
+  /* Deselect card */
+  SDCARD_SPI_CS_High();
+  SDCARD_SPI_TransmitReceive(0xFF);
+
+  return SDCARD_OK;
+}

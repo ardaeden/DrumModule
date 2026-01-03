@@ -30,6 +30,14 @@ int SDCARD_Init(void);
 int SDCARD_ReadBlock(uint32_t block_addr, uint8_t *buffer);
 
 /**
+ * @brief Write a single 512-byte block to SD card
+ * @param block_addr Block address (for SDHC) or byte address (for SD)
+ * @param buffer Buffer containing 512 bytes to write
+ * @return SDCARD_OK on success, error code otherwise
+ */
+int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer);
+
+/**
  * @brief Get SD card type
  * @return Card type constant
  */

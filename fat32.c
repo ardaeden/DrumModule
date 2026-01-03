@@ -61,6 +61,24 @@ static uint32_t cluster_to_sector(uint32_t cluster) {
   return first_data_sector + (cluster - 2) * sectors_per_cluster;
 }
 
+/**
+ * @brief Write 16-bit little-endian value
+ */
+static void write_u16(uint8_t *buf, uint16_t offset, uint16_t value) {
+  buf[offset] = value & 0xFF;
+  buf[offset + 1] = (value >> 8) & 0xFF;
+}
+
+/**
+ * @brief Write 32-bit little-endian value
+ */
+static void write_u32(uint8_t *buf, uint16_t offset, uint32_t value) {
+  buf[offset] = value & 0xFF;
+  buf[offset + 1] = (value >> 8) & 0xFF;
+  buf[offset + 2] = (value >> 16) & 0xFF;
+  buf[offset + 3] = (value >> 24) & 0xFF;
+}
+
 int FAT32_Init(void) {
   uint32_t partition_start = 0;
 
@@ -244,4 +262,161 @@ uint32_t FAT32_GetFileSector(FAT32_FileEntry *file) {
     return 0;
   }
   return cluster_to_sector(file->first_cluster);
+}
+
+int FAT32_FileExists(uint32_t dir_cluster, const char *filename) {
+  uint32_t sector = cluster_to_sector(dir_cluster);
+
+  for (int sec = 0; sec < sectors_per_cluster; sec++) {
+    if (SDCARD_ReadBlock(sector + sec, sector_buffer) != SDCARD_OK) {
+      return 0;
+    }
+
+    for (int entry = 0; entry < 16; entry++) {
+      uint8_t *dir_entry = sector_buffer + (entry * 32);
+
+      if (dir_entry[DIR_NAME] == 0x00) {
+        return 0;
+      }
+
+      if (dir_entry[DIR_NAME] == 0xE5) {
+        continue;
+      }
+
+      uint8_t attr = dir_entry[DIR_ATTR];
+      if ((attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
+        continue;
+      }
+
+      char entry_name[FAT32_FILENAME_LEN];
+      copy_filename(entry_name, dir_entry + DIR_NAME);
+
+      if (strcasecmp(entry_name, filename) == 0) {
+        return 1;
+      }
+    }
+  }
+
+  return 0;
+}
+
+int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
+                    const uint8_t *data, uint32_t size) {
+  // Simplified implementation for small files (<512 bytes)
+  if (size > 512) {
+    return -1;
+  }
+
+  uint32_t dir_sector = cluster_to_sector(dir_cluster);
+  int found_entry = -1;
+  int found_sector = -1;
+  int empty_entry = -1;
+  int empty_sector = -1;
+
+  // Search for existing file or empty slot
+  for (int sec = 0; sec < sectors_per_cluster && found_entry == -1; sec++) {
+    if (SDCARD_ReadBlock(dir_sector + sec, sector_buffer) != SDCARD_OK) {
+      return -1;
+    }
+
+    for (int entry = 0; entry < 16; entry++) {
+      uint8_t *dir_entry = sector_buffer + (entry * 32);
+
+      if (dir_entry[DIR_NAME] == 0x00 || dir_entry[DIR_NAME] == 0xE5) {
+        if (empty_entry == -1) {
+          empty_entry = entry;
+          empty_sector = sec;
+        }
+        if (dir_entry[DIR_NAME] == 0x00) {
+          break;
+        }
+        continue;
+      }
+
+      uint8_t attr = dir_entry[DIR_ATTR];
+      if ((attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
+        continue;
+      }
+
+      char entry_name[FAT32_FILENAME_LEN];
+      copy_filename(entry_name, dir_entry + DIR_NAME);
+
+      if (strcasecmp(entry_name, filename) == 0) {
+        found_entry = entry;
+        found_sector = sec;
+        break;
+      }
+    }
+  }
+
+  int use_entry = (found_entry != -1) ? found_entry : empty_entry;
+  int use_sector = (found_entry != -1) ? found_sector : empty_sector;
+
+  if (use_entry == -1) {
+    return -1;
+  }
+
+  // Read directory sector
+  if (SDCARD_ReadBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {
+    return -1;
+  }
+
+  uint8_t *dir_entry = sector_buffer + (use_entry * 32);
+
+  // Parse filename into 8.3 format
+  char name_part[9] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' ', '\0'};
+  char ext_part[4] = {' ', ' ', ' ', '\0'};
+
+  const char *dot = strchr(filename, '.');
+  int name_len = dot ? (dot - filename) : strlen(filename);
+  if (name_len > 8)
+    name_len = 8;
+
+  for (int i = 0; i < name_len; i++) {
+    name_part[i] = filename[i];
+  }
+
+  if (dot) {
+    int ext_len = strlen(dot + 1);
+    if (ext_len > 3)
+      ext_len = 3;
+    for (int i = 0; i < ext_len; i++) {
+      ext_part[i] = dot[1 + i];
+    }
+  }
+
+  // Write directory entry
+  for (int i = 0; i < 8; i++) {
+    dir_entry[DIR_NAME + i] = name_part[i];
+  }
+  for (int i = 0; i < 3; i++) {
+    dir_entry[DIR_NAME + 8 + i] = ext_part[i];
+  }
+
+  dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
+  write_u32(dir_entry, DIR_FILE_SIZE, size);
+
+  // Use cluster 2 + entry number for file storage
+  uint32_t file_cluster = 2 + use_entry;
+  write_u16(dir_entry, DIR_FSTCLUS_HI, (file_cluster >> 16) & 0xFFFF);
+  write_u16(dir_entry, DIR_FSTCLUS_LO, file_cluster & 0xFFFF);
+
+  // Write updated directory
+  if (SDCARD_WriteBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {
+    return -1;
+  }
+
+  // Write file data
+  uint32_t data_sector = cluster_to_sector(file_cluster);
+  uint8_t data_buffer[512] = {0};
+
+  for (uint32_t i = 0; i < size && i < 512; i++) {
+    data_buffer[i] = data[i];
+  }
+
+  if (SDCARD_WriteBlock(data_sector, data_buffer) != SDCARD_OK) {
+    return -1;
+  }
+
+  return 0;
 }

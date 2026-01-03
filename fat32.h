@@ -52,4 +52,23 @@ int FAT32_ListDir(uint32_t cluster, FAT32_FileEntry *files, int max_files);
  */
 uint32_t FAT32_GetFileSector(FAT32_FileEntry *file);
 
+/**
+ * @brief Check if a file exists
+ * @param dir_cluster Directory cluster to search in
+ * @param filename Filename to check (8.3 format)
+ * @return 1 if exists, 0 if not
+ */
+int FAT32_FileExists(uint32_t dir_cluster, const char *filename);
+
+/**
+ * @brief Write data to a file (create or overwrite)
+ * @param dir_cluster Directory cluster where file should be created
+ * @param filename Filename (8.3 format, e.g., "KIT-001.DRM")
+ * @param data Data to write
+ * @param size Size of data in bytes
+ * @return 0 on success, -1 on error
+ */
+int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
+                    const uint8_t *data, uint32_t size);
+
 #endif

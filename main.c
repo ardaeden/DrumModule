@@ -132,6 +132,15 @@ static int last_menu_index = 0;
 static Drumset *current_drumset = NULL;
 static uint32_t current_cluster = 0; /* Current directory cluster for browser */
 
+/* Drumset Menu States: 0=Off, 1=Menu, 2=Save Slots, 3=Load Slots */
+static volatile uint8_t is_drumset_menu_mode = 0;
+static int drumset_menu_index = 0;  /* 0=Save, 1=Load, 2=Back */
+static uint8_t selected_slot = 1;   /* Current slot selection (1-100) */
+static uint8_t occupied_slots[100]; /* List of occupied slots */
+static int occupied_slot_count = 0;
+static uint32_t button_edit_click_count = 0; /* For double-click detection */
+static uint32_t button_edit_last_click_time = 0;
+
 /* Helper: case-insensitive string ends with check */
 static int str_ends_with(const char *str, const char *suffix) {
   int str_len = strlen(str);
@@ -353,6 +362,100 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
   }
 }
 
+static void DrawDrumsetMenu(void) {
+  ST7789_Fill(BLACK);
+
+  if (is_drumset_menu_mode == 1) {
+    /* Main Menu */
+    ST7789_WriteString(10, 10, "DRUMSET MENU", YELLOW, BLACK, 2);
+
+    const char *menu_items[] = {"SAVE", "LOAD", "BACK"};
+    for (int i = 0; i < 3; i++) {
+      uint16_t y_pos = 60 + (i * 40);
+      uint16_t color = (i == drumset_menu_index) ? WHITE : GRAY;
+
+      if (i == drumset_menu_index) {
+        ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
+      }
+      ST7789_WriteString(40, y_pos, menu_items[i], color, BLACK, 2);
+    }
+  } else if (is_drumset_menu_mode == 2) {
+    /* Save Slots */
+    ST7789_WriteString(10, 10, "SAVE TO SLOT", YELLOW, BLACK, 2);
+
+    /* Display 8 slots centered around selected_slot */
+    int start_slot = selected_slot - 3;
+    if (start_slot < 1)
+      start_slot = 1;
+    if (start_slot > 93)
+      start_slot = 93; /* Ensure we can show 8 slots */
+
+    for (int i = 0; i < 8; i++) {
+      uint8_t slot_num = start_slot + i;
+      if (slot_num > 100)
+        break;
+
+      uint16_t y_pos = 50 + (i * 20);
+
+      char slot_text[20];
+      snprintf(slot_text, sizeof(slot_text), "Slot %03d", slot_num);
+
+      /* Check if occupied */
+      int is_occupied = 0;
+      for (int j = 0; j < occupied_slot_count; j++) {
+        if (occupied_slots[j] == slot_num) {
+          is_occupied = 1;
+          break;
+        }
+      }
+
+      if (is_occupied) {
+        strcat(slot_text, " [X]");
+      }
+
+      uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
+      if (slot_num == selected_slot) {
+        ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
+      }
+      ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
+    }
+  } else if (is_drumset_menu_mode == 3) {
+    /* Load Slots - only show occupied */
+    ST7789_WriteString(10, 10, "LOAD FROM SLOT", YELLOW, BLACK, 2);
+
+    if (occupied_slot_count == 0) {
+      ST7789_WriteString(40, 100, "NO SAVED KITS", GRAY, BLACK, 2);
+    } else {
+      /* Find current selection index in occupied list */
+      int current_idx = 0;
+      for (int i = 0; i < occupied_slot_count; i++) {
+        if (occupied_slots[i] == selected_slot) {
+          current_idx = i;
+          break;
+        }
+      }
+
+      /* Display slots around current selection */
+      for (int i = -3; i <= 4; i++) {
+        int idx = current_idx + i;
+        if (idx >= 0 && idx < occupied_slot_count) {
+          uint8_t slot_num = occupied_slots[idx];
+          uint16_t y_pos = 50 + ((i + 3) * 20);
+
+          char slot_text[20];
+          snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]", slot_num);
+
+          uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
+          if (slot_num == selected_slot) {
+            ST7789_WriteString(10, y_pos, ">", YELLOW, BLACK, 2);
+          }
+          ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
+        }
+      }
+    }
+  }
+}
+
 static void TriggerChannelEdit(void) {
   is_channel_edit_mode = 1; /* Go to Menu */
   edit_menu_index = 0;
@@ -490,7 +593,21 @@ int main(void) {
     /* Handle BPM/Channel updates from encoder */
     int32_t encoder_val = Encoder_GetValue();
     if (encoder_val != last_encoder) {
-      if (is_channel_edit_mode == 1) {
+      if (is_drumset_menu_mode == 1) {
+        /* Drumset menu navigation */
+        drumset_menu_index = encoder_val;
+        DrawDrumsetMenu();
+      } else if (is_drumset_menu_mode == 2) {
+        /* Save slot selection */
+        selected_slot = (uint8_t)encoder_val;
+        DrawDrumsetMenu();
+      } else if (is_drumset_menu_mode == 3) {
+        /* Load slot selection - encoder value is index in occupied_slots */
+        if (encoder_val >= 0 && encoder_val < occupied_slot_count) {
+          selected_slot = occupied_slots[encoder_val];
+          DrawDrumsetMenu();
+        }
+      } else if (is_channel_edit_mode == 1) {
         edit_menu_index = encoder_val;
         DrawChannelEditScreen(0);
       } else if (is_channel_edit_mode == 2) {
@@ -539,6 +656,9 @@ int main(void) {
         ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
         ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
       }
+
+      /* Reset double-click counter after any encoder activity */
+      button_edit_click_count = 0;
     }
 
     if (is_playing) {
@@ -779,6 +899,105 @@ static void UpdateBlinker(uint8_t channel, uint8_t active) {
 }
 
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
+  /* Handle drumset menu first */
+  if (is_drumset_menu_mode) {
+    if (pressed) {
+      if (button_id == BUTTON_ENCODER) {
+        if (is_drumset_menu_mode == 1) {
+          /* Main menu selection */
+          if (drumset_menu_index == 0) {
+            /* SAVE */
+            occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
+            selected_slot = 1;
+            Encoder_SetLimits(1, 100);
+            Encoder_SetValue(1);
+            is_drumset_menu_mode = 2;
+            DrawDrumsetMenu();
+          } else if (drumset_menu_index == 1) {
+            /* LOAD */
+            occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
+            if (occupied_slot_count > 0) {
+              selected_slot = occupied_slots[0];
+              Encoder_SetLimits(0, occupied_slot_count - 1);
+              Encoder_SetValue(0);
+              is_drumset_menu_mode = 3;
+              DrawDrumsetMenu();
+            }
+          } else {
+            /* BACK */
+            is_drumset_menu_mode = 0;
+            mode_changed = 1;
+          }
+        } else if (is_drumset_menu_mode == 2) {
+          /* Save to selected slot */
+          int result = Drumset_Save(current_drumset, selected_slot);
+
+          /* Show result */
+          ST7789_FillRect(30, 90, 180, 60, BLACK);
+          ST7789_DrawThickFrame(30, 90, 180, 60, 2, WHITE);
+          if (result == 0) {
+            ST7789_WriteString(60, 102, "SAVED!", GREEN, BLACK, 2);
+            char slot_msg[20];
+            snprintf(slot_msg, sizeof(slot_msg), "Slot %03d", selected_slot);
+            ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
+          } else {
+            ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
+            ST7789_WriteString(35, 122, "No DRUMSETS?", YELLOW, BLACK, 1);
+          }
+
+          for (volatile int i = 0; i < 2000000; i++)
+            ;
+
+          /* Return to main menu */
+          is_drumset_menu_mode = 1;
+          Encoder_SetLimits(0, 2);
+          Encoder_SetValue(0);
+          DrawDrumsetMenu();
+        } else if (is_drumset_menu_mode == 3) {
+          /* Load from selected slot */
+          int result = Drumset_LoadFromSlot(current_drumset, selected_slot);
+
+          /* Show result */
+          ST7789_FillRect(30, 90, 180, 60, BLACK);
+          ST7789_DrawThickFrame(30, 90, 180, 60, 2, WHITE);
+          if (result == 0) {
+            ST7789_WriteString(55, 102, "LOADED!", GREEN, BLACK, 2);
+            char slot_msg[20];
+            snprintf(slot_msg, sizeof(slot_msg), "Slot %03d", selected_slot);
+            ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
+          } else {
+            ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
+            ST7789_WriteString(40, 122, "Load failed", YELLOW, BLACK, 1);
+          }
+
+          for (volatile int i = 0; i < 2000000; i++)
+            ;
+
+          /* Exit menu */
+          is_drumset_menu_mode = 0;
+          mode_changed = 1;
+          full_redraw_needed = 1;
+        }
+      } else if (button_id == BUTTON_EDIT) {
+        /* Back in drumset menu */
+        if (is_drumset_menu_mode == 1) {
+          /* Exit menu */
+          is_drumset_menu_mode = 0;
+          mode_changed = 1;
+          full_redraw_needed = 1;
+        } else {
+          /* Go back to main menu */
+          is_drumset_menu_mode = 1;
+          drumset_menu_index = 0;
+          Encoder_SetLimits(0, 2);
+          Encoder_SetValue(0);
+          DrawDrumsetMenu();
+        }
+      }
+    }
+    return; /* Don't process other buttons while in drumset menu */
+  }
+
   if (pressed) {
     if (button_id == BUTTON_START) {
       if (is_edit_mode)
@@ -907,8 +1126,26 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        ToggleEditMode();
+        /* Double-click detection for drumset menu */
+        /* Simple counter-based approach: increment on each click */
+        button_edit_click_count++;
+
+        if (button_edit_click_count >= 2) {
+          /* Double click detected - open drumset menu */
+          is_drumset_menu_mode = 1;
+          drumset_menu_index = 0;
+          Encoder_SetLimits(0, 2);
+          Encoder_SetValue(0);
+          DrawDrumsetMenu();
+          button_edit_click_count = 0;
+        } else {
+          /* First click - toggle edit mode */
+          ToggleEditMode();
+        }
       }
     }
+  } else {
+    /* Button released - reset click counter after delay */
+    /* Note: This is simplified, ideally would use a timer */
   }
 }

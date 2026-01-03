@@ -4,6 +4,7 @@
 #include "sdcard.h"
 #include <stdio.h>
 #include <string.h>
+#include <strings.h>
 
 /* WAV header structure */
 typedef struct {
@@ -280,4 +281,185 @@ void WAV_UnloadChannel(uint8_t channel, Drumset *drumset) {
           sizeof(drumset->sample_names[channel]) - 1);
   drumset->sample_names[channel][sizeof(drumset->sample_names[channel]) - 1] =
       '\0';
+}
+
+int Drumset_Save(Drumset *drumset, uint8_t slot) {
+  if (slot < 1 || slot > 100) {
+    return -1;
+  }
+
+  // Find or create DRUMSETS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  if (drumsets_cluster == 0) {
+    // DRUMSETS folder doesn't exist - for now, return error
+    // TODO: Create directory if needed
+    return -1;
+  }
+
+  // Generate filename: KIT-XXX.DRM
+  char filename[13];
+  snprintf(filename, sizeof(filename), "KIT-%03d.DRM", slot);
+
+  // Serialize drumset to text buffer
+  char buffer[512];
+  int offset = 0;
+
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    // Format: channel,sample_path,volume,pan\n
+    // For sample path, use relative path from SAMPLES folder
+    const char *sample_name = drumset->sample_names[ch];
+
+    // Build sample path
+    char sample_path[32];
+    if (strcmp(sample_name, "EMPTY") == 0) {
+      strcpy(sample_path, "EMPTY");
+    } else {
+      snprintf(sample_path, sizeof(sample_path), "SAMPLES/%s.WAV", sample_name);
+    }
+
+    int written =
+        snprintf(buffer + offset, sizeof(buffer) - offset, "%d,%s,%d,%d\n", ch,
+                 sample_path, drumset->volumes[ch], drumset->pans[ch]);
+
+    if (written < 0 || offset + written >= sizeof(buffer)) {
+      return -1; // Buffer overflow
+    }
+
+    offset += written;
+  }
+
+  // Write to SD card
+  return FAT32_WriteFile(drumsets_cluster, filename, (uint8_t *)buffer, offset);
+}
+
+int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
+  if (slot < 1 || slot > 100) {
+    return -1;
+  }
+
+  // Find DRUMSETS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  if (drumsets_cluster == 0) {
+    return -1;
+  }
+
+  // Generate filename
+  char filename[13];
+  snprintf(filename, sizeof(filename), "KIT-%03d.DRM", slot);
+
+  // Check if file exists
+  if (!FAT32_FileExists(drumsets_cluster, filename)) {
+    return -1;
+  }
+
+  // Find the file entry to read it
+  FAT32_FileEntry files[FAT32_MAX_FILES];
+  int count = FAT32_ListDir(drumsets_cluster, files, FAT32_MAX_FILES);
+
+  FAT32_FileEntry *target_file = NULL;
+  for (int i = 0; i < count; i++) {
+    if (strcasecmp(files[i].name, filename) == 0) {
+      target_file = &files[i];
+      break;
+    }
+  }
+
+  if (!target_file) {
+    return -1;
+  }
+
+  // Read file content
+  uint32_t sector = FAT32_GetFileSector(target_file);
+  uint8_t buffer[512];
+
+  if (SDCARD_ReadBlock(sector, buffer) != SDCARD_OK) {
+    return -1;
+  }
+
+  // Parse text format
+  char *line = (char *)buffer;
+  for (int ch = 0; ch < NUM_CHANNELS; ch++) {
+    int channel_num;
+    char sample_path[32];
+    int volume, pan;
+
+    // Parse line: channel,sample_path,volume,pan
+    int parsed = sscanf(line, "%d,%31[^,],%d,%d", &channel_num, sample_path,
+                        &volume, &pan);
+
+    if (parsed != 4 || channel_num != ch) {
+      return -1; // Parse error
+    }
+
+    // Set volume and pan
+    drumset->volumes[ch] = volume;
+    drumset->pans[ch] = pan;
+
+    // Load sample
+    if (strcmp(sample_path, "EMPTY") == 0) {
+      WAV_UnloadChannel(ch, drumset);
+    } else {
+      // Extract filename from path (SAMPLES/KICK.WAV -> KICK.WAV)
+      const char *filename_start = strrchr(sample_path, '/');
+      if (filename_start) {
+        filename_start++; // Skip the '/'
+      } else {
+        filename_start = sample_path;
+      }
+
+      // Find and load the sample file
+      uint32_t samples_cluster =
+          FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
+      if (samples_cluster != 0) {
+        FAT32_FileEntry sample_files[FAT32_MAX_FILES];
+        int sample_count =
+            FAT32_ListDir(samples_cluster, sample_files, FAT32_MAX_FILES);
+
+        for (int i = 0; i < sample_count; i++) {
+          if (strcasecmp(sample_files[i].name, filename_start) == 0) {
+            WAV_LoadSample(&sample_files[i], ch, drumset);
+            break;
+          }
+        }
+      }
+    }
+
+    // Move to next line
+    line = strchr(line, '\n');
+    if (line) {
+      line++; // Skip newline
+    } else {
+      break;
+    }
+  }
+
+  return 0;
+}
+
+int Drumset_GetOccupiedSlots(uint8_t *slots, int max_slots) {
+  // Find DRUMSETS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  if (drumsets_cluster == 0) {
+    return 0; // No DRUMSETS folder
+  }
+
+  FAT32_FileEntry files[FAT32_MAX_FILES];
+  int count = FAT32_ListDir(drumsets_cluster, files, FAT32_MAX_FILES);
+
+  int occupied_count = 0;
+
+  for (int i = 0; i < count && occupied_count < max_slots; i++) {
+    // Check if filename matches KIT-XXX.DRM pattern
+    if (strncmp(files[i].name, "KIT-", 4) == 0) {
+      // Extract slot number
+      int slot_num;
+      if (sscanf(files[i].name + 4, "%d", &slot_num) == 1) {
+        if (slot_num >= 1 && slot_num <= 100) {
+          slots[occupied_count++] = slot_num;
+        }
+      }
+    }
+  }
+
+  return occupied_count;
 }

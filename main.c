@@ -382,13 +382,8 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
 }
 
 static void DrawDrumsetMenu(uint8_t full_redraw) {
-  static int last_start_slot = -1;
-  static int last_current_idx = -1;
-
   if (full_redraw) {
     ST7789_Fill(BLACK);
-    last_start_slot = -1;
-    last_current_idx = -1;
   }
 
   if (is_drumset_menu_mode == 1) {
@@ -414,8 +409,6 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
       start_slot = 1;
     if (start_slot > 93)
       start_slot = 93;
-
-    last_start_slot = start_slot;
 
     for (int i = 0; i < 8; i++) {
       uint8_t slot_num = start_slot + i;
@@ -458,8 +451,6 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
           break;
         }
       }
-      last_current_idx = current_idx;
-
       /* Display slots around current selection */
       for (int i = -3; i <= 4; i++) {
         int idx = current_idx + i;

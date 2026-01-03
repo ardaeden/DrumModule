@@ -4,16 +4,20 @@
 #include <stdint.h>
 
 /* Button IDs */
-#define BUTTON_START 0
-#define BUTTON_ENCODER 1
-#define BUTTON_EDIT 2
+typedef enum {
+  BUTTON_START = 0,
+  BUTTON_ENCODER = 1,
+  BUTTON_EDIT = 2,
+  BUTTON_PATTERN = 3
+} ButtonID;
 
 /**
  * @brief Button event callback type
- * @param button_id ID of the button (BUTTON_START or BUTTON_ENCODER)
+ * @param button_id ID of the button (BUTTON_START, BUTTON_ENCODER, BUTTON_EDIT,
+ * or BUTTON_PATTERN)
  * @param pressed 1 if button pressed, 0 if released
  */
-typedef void (*ButtonCallback)(uint8_t button_id, uint8_t pressed);
+typedef void (*ButtonCallback)(ButtonID button_id, uint8_t pressed);
 
 /**
  * @brief Initialize button with hardware interrupt

@@ -121,15 +121,17 @@ void SystemClock_Config(void) {
 static void LoadTestPattern(void);
 static void DrawMainScreen(Drumset *drumset);
 static void DrawDrumsetMenu(uint8_t full_redraw);
+static void DrawPatternEditScreen(uint8_t full_redraw);
 static void UpdateModeUI(void);
 static void UpdateBlinker(uint8_t channel, uint8_t active);
-static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
+static void OnButtonEvent(ButtonID button_id, uint8_t pressed);
 
 /* Global state for display and control */
 static volatile uint8_t is_playing = 0;
 static volatile uint8_t is_edit_mode = 0; /* 0=Normal, 1=Drumset Edit */
 /* Channel Edit Mode States: 0=Off, 1=Menu, 2=Browser, 3=Vol, 4=Pan */
 static volatile uint8_t is_channel_edit_mode = 0;
+static volatile uint8_t is_pattern_edit_mode = 0; /* 0=Off, 1=On */
 static volatile uint8_t selected_channel = 0;
 static volatile uint32_t saved_bpm = 120;
 static volatile uint8_t mode_changed = 0;
@@ -577,9 +579,9 @@ int main(void) {
     strcpy(drumset.name, "KIT-001");
   }
 
-  /* Note: Drumset_LoadFromSlot handles AudioMixer_SetSample/Vol/Pan internally.
-   * No further manual assignment is needed here, matching the manual load
-   * logic.
+  /* Note: Drumset_LoadFromSlot handles AudioMixer_SetSample/Vol/Pan
+   * internally. No further manual assignment is needed here, matching the
+   * manual load logic.
    */
 
   /* Start audio subsystem as early as possible for PLLI2S stability */
@@ -605,6 +607,9 @@ int main(void) {
       last_encoder = Encoder_GetValue();
       if (is_channel_edit_mode) {
         DrawChannelEditScreen(1);
+        full_redraw_needed = 0;
+      } else if (is_pattern_edit_mode) {
+        DrawPatternEditScreen(1);
         full_redraw_needed = 0;
       } else if (is_drumset_menu_mode) {
         DrawDrumsetMenu(1); // Ensure full redraw on mode change
@@ -684,6 +689,15 @@ int main(void) {
         /* Handle Channel Selection */
         selected_channel = (uint8_t)encoder_val;
         mode_changed = 1; // Trigger UI update for channel highlight
+      } else if (is_pattern_edit_mode) {
+        /* Pattern Edit Mode - Allow BPM change */
+        Sequencer_SetBPM((uint16_t)encoder_val);
+
+        /* Draw BPM at a safe location */
+        char val_buf[16];
+        snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
+        ST7789_WriteString(180, 220, "BPM:", WHITE, BLACK, 2);
+        ST7789_WriteString(230, 220, val_buf, YELLOW, BLACK, 2);
       } else {
         /* Handle BPM Change */
         Sequencer_SetBPM((uint16_t)encoder_val);
@@ -698,7 +712,8 @@ int main(void) {
     }
 
     /* UI guards for background updates while menus are active */
-    if (!is_drumset_menu_mode && !is_channel_edit_mode) {
+    if (!is_drumset_menu_mode && !is_channel_edit_mode &&
+        !is_pattern_edit_mode) {
       /* Handle UI refresh when playback stops */
       if (needs_ui_refresh) {
         needs_ui_refresh = 0;
@@ -1003,7 +1018,15 @@ static void UpdateBlinker(uint8_t channel, uint8_t active) {
   }
 }
 
-static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
+static void DrawPatternEditScreen(uint8_t full_redraw) {
+  if (full_redraw) {
+    ST7789_Fill(BLACK);
+  }
+  ST7789_WriteString(10, 10, "PATTERN EDIT MODE", CYAN, BLACK, 2);
+  ST7789_WriteString(10, 100, "COMING SOON...", WHITE, BLACK, 2);
+}
+
+static void OnButtonEvent(ButtonID button_id, uint8_t pressed) {
   /* Handle drumset menu first */
   if (is_drumset_menu_mode) {
     if (pressed) {
@@ -1272,6 +1295,26 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           button_edit_start_time = HAL_GetTick();
           button_edit_handled = 0;
         }
+      }
+    } else if (button_id == BUTTON_PATTERN) {
+      /* Toggle Pattern Edit Mode */
+      /* Toggle Pattern Edit Mode */
+
+      if (is_pattern_edit_mode) {
+        is_pattern_edit_mode = 0;
+        // Don't draw here! Set flag only.
+        full_redraw_needed = 1;
+        mode_changed = 1;
+      } else {
+        /* Exit other modes */
+        is_edit_mode = 0;
+        is_channel_edit_mode = 0;
+        is_drumset_menu_mode = 0;
+
+        is_pattern_edit_mode = 1;
+        // Don't draw here! Set flag only.
+        full_redraw_needed = 1;
+        mode_changed = 1;
       }
     }
   } else {

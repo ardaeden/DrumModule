@@ -122,6 +122,26 @@ void Button_Init(void) {
   /* Enable EXTI9_5 interrupt in NVIC (IRQ 23) */
   NVIC_ISER0 |= (1 << 23);
 
+  /* --- Configure PB1 (Pattern Button) --- */
+  /* Input, Pull-Up */
+  GPIOB_MODER &= ~(3UL << (1 * 2));
+  GPIOB_PUPDR &= ~(3UL << (1 * 2));
+  GPIOB_PUPDR |= (1UL << (1 * 2));
+
+  /* PB1 -> EXTI1 */
+  SYSCFG_EXTICR1 &= ~(0xF << 4);
+  SYSCFG_EXTICR1 |= (1 << 4);
+
+  /* EXTI1: Falling edge */
+  EXTI_FTSR |= (1 << 1);
+  EXTI_RTSR &= ~(1 << 1);
+
+  /* Unmask EXTI1 */
+  EXTI_IMR |= (1 << 1);
+
+  /* Enable EXTI1 interrupt in NVIC (IRQ 7) */
+  NVIC_ISER0 |= (1 << 7);
+
   /* --- Configure TIM5 for debounce --- */
   TIM5_PSC = 47999;      /* 1ms tick */
   TIM5_ARR = 20;         /* 20ms */
@@ -136,6 +156,16 @@ void EXTI0_IRQHandler(void) {
     EXTI_PR = (1 << 0);
     EXTI_IMR &= ~(1 << 0); /* Mask EXTI0 */
     buttons_active_mask |= (1 << BUTTON_START);
+    TIM5_CNT = 0;
+    TIM5_CR1 |= (1 << 0); /* Start timer */
+  }
+}
+
+void EXTI1_IRQHandler(void) {
+  if (EXTI_PR & (1 << 1)) {
+    EXTI_PR = (1 << 1);
+    EXTI_IMR &= ~(1 << 1); /* Mask EXTI1 */
+    buttons_active_mask |= (1 << BUTTON_PATTERN);
     TIM5_CNT = 0;
     TIM5_CR1 |= (1 << 0); /* Start timer */
   }
@@ -202,6 +232,16 @@ void TIM5_IRQHandler(void) {
           button_callback(BUTTON_EDIT, 1);
       }
       EXTI_IMR |= (1 << 9); /* Unmask */
+    }
+
+    /* Check Pattern Button (PB1) */
+    if (buttons_active_mask & (1 << BUTTON_PATTERN)) {
+      uint8_t val = (GPIOB_IDR & (1 << 1)) ? 1 : 0;
+      if (val == 0) {
+        if (button_callback)
+          button_callback(BUTTON_PATTERN, 1);
+      }
+      EXTI_IMR |= (1 << 1); /* Unmask */
     }
 
     buttons_active_mask = 0;

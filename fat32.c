@@ -1,6 +1,10 @@
+#define SECTOR_SIZE 512
+
 #include "fat32.h"
 #include "sdcard.h"
 #include <stdint.h>
+#include <string.h>
+#include <strings.h>
 
 /* FAT32 Boot Sector Offsets */
 #define BS_BYTES_PER_SEC 11
@@ -127,6 +131,55 @@ static void copy_filename(char *dest, uint8_t *src) {
 }
 
 uint32_t FAT32_GetRootCluster(void) { return root_cluster; }
+
+uint32_t FAT32_FindDir(uint32_t parent_cluster, const char *name) {
+  uint32_t sector = cluster_to_sector(parent_cluster);
+
+  for (int sec = 0; sec < sectors_per_cluster; sec++) {
+    if (SDCARD_ReadBlock(sector + sec, sector_buffer) != SDCARD_OK) {
+      return 0;
+    }
+
+    /* Parse directory entries (32 bytes each) */
+    for (int entry = 0; entry < 16; entry++) {
+      uint8_t *dir_entry = sector_buffer + (entry * 32);
+
+      /* Check if entry is free */
+      if (dir_entry[DIR_NAME] == 0x00) {
+        return 0;
+      }
+
+      if (dir_entry[DIR_NAME] == 0xE5) {
+        continue;
+      }
+
+      uint8_t attr = dir_entry[DIR_ATTR];
+
+      /* Skip long names, etc */
+      if ((attr & ATTR_LONG_NAME) == ATTR_LONG_NAME ||
+          (attr & ATTR_VOLUME_ID)) {
+        continue;
+      }
+
+      /* Only interested in directories */
+      if (!(attr & ATTR_DIRECTORY)) {
+        continue;
+      }
+
+      char entry_name[FAT32_FILENAME_LEN];
+      copy_filename(entry_name, dir_entry + DIR_NAME);
+
+      if (strcasecmp(entry_name, name) == 0) {
+        /* Match found! */
+        uint16_t cluster_hi = read_u16(dir_entry, DIR_FSTCLUS_HI);
+        uint16_t cluster_lo = read_u16(dir_entry, DIR_FSTCLUS_LO);
+        return ((uint32_t)cluster_hi << 16) | cluster_lo;
+      }
+    }
+  }
+
+  return 0;
+}
 
 int FAT32_ListDir(uint32_t cluster, FAT32_FileEntry *files, int max_files) {
   int file_count = 0;

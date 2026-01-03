@@ -29,6 +29,14 @@ int FAT32_Init(void);
 uint32_t FAT32_GetRootCluster(void);
 
 /**
+ * @brief Find a directory by name in a given directory
+ * @param parent_cluster Cluster of the directory to search in
+ * @param name Name of the directory to find
+ * @return First cluster of the directory if found, 0 otherwise
+ */
+uint32_t FAT32_FindDir(uint32_t parent_cluster, const char *name);
+
+/**
  * @brief Get list of files in a directory
  * @param cluster Directory cluster (use FAT32_GetRootCluster() for root)
  * @param files Array to store file entries

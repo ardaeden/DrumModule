@@ -798,8 +798,12 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         /* MENU SELECTION */
         if (edit_menu_index == 0) {
           /* Go to Browser */
-          if (current_cluster == 0)
-            current_cluster = FAT32_GetRootCluster();
+          if (current_cluster == 0) {
+            current_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
+            if (current_cluster == 0) {
+              current_cluster = FAT32_GetRootCluster();
+            }
+          }
           ScanDirectory();
           selected_file_index = 0;
           last_selected_file_index = -1; /* Force redraw of selected item */

@@ -95,14 +95,37 @@ void SystemClock_Config(void) {
 /* Private function prototypes */
 static void LoadTestPattern(void);
 static void DrawMainScreen(Drumset *drumset);
+static void UpdateModeUI(void);
 static void UpdateBlinker(uint8_t channel, uint8_t active);
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
 
 /* Global state for display and control */
 static volatile uint8_t is_playing = 0;
+static volatile uint8_t is_edit_mode = 0; /* 0=Normal, 1=Drumset Edit */
+static volatile uint8_t selected_channel = 0;
+static volatile uint32_t saved_bpm = 120;
+static volatile uint8_t mode_changed = 0;
+
 static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t needs_ui_refresh = 0;
+
+static void ToggleEditMode(void) {
+  if (is_playing)
+    return;
+
+  is_edit_mode = !is_edit_mode;
+  if (is_edit_mode) {
+    saved_bpm = Encoder_GetValue();
+    Encoder_SetLimits(0, NUM_CHANNELS - 1);
+    Encoder_SetValue(selected_channel);
+  } else {
+    selected_channel = Encoder_GetValue();
+    Encoder_SetLimits(40, 300);
+    Encoder_SetValue(saved_bpm);
+  }
+  mode_changed = 1;
+}
 
 /**
  * @brief Main application entry point
@@ -154,6 +177,13 @@ int main(void) {
   int32_t last_increment = 0;
 
   while (1) {
+    /* Handle Mode Change */
+    if (mode_changed) {
+      mode_changed = 0;
+      last_encoder = Encoder_GetValue();
+      UpdateModeUI();
+    }
+
     /* Handle UI refresh when playback stops */
     if (needs_ui_refresh) {
       needs_ui_refresh = 0;
@@ -185,28 +215,42 @@ int main(void) {
       last_playing = is_playing;
     }
 
-    /* Handle BPM updates from encoder */
+    /* Handle BPM/Channel updates from encoder */
     int32_t encoder_val = Encoder_GetValue();
     if (encoder_val != last_encoder) {
-      Sequencer_SetBPM((uint16_t)encoder_val);
-      last_encoder = encoder_val;
+      if (is_edit_mode) {
+        /* Handle Channel Selection */
+        uint8_t new_channel = (uint8_t)encoder_val;
+        if (new_channel != selected_channel) {
+          UpdateBlinker(selected_channel, 0); /* Unhighlight old */
+          selected_channel = new_channel;
+          UpdateBlinker(selected_channel, 1); /* Highlight new */
+        }
+      } else {
+        /* Handle BPM Change */
+        Sequencer_SetBPM((uint16_t)encoder_val);
 
-      char val_buf[16];
-      snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
-      uint16_t val_color = (Encoder_GetIncrementStep() == 10) ? MAGENTA : CYAN;
-      ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
-      ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
+        char val_buf[16];
+        snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
+        uint16_t val_color =
+            (Encoder_GetIncrementStep() == 10) ? MAGENTA : CYAN;
+        ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+        ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
+      }
+      last_encoder = encoder_val;
     }
 
-    /* Handle encoder increment step changes */
-    int32_t increment = Encoder_GetIncrementStep();
-    if (increment != last_increment) {
-      last_increment = increment;
-      char val_buf[16];
-      snprintf(val_buf, sizeof(val_buf), "%d ", (int)Encoder_GetValue());
-      uint16_t val_color = (increment == 10) ? MAGENTA : CYAN;
-      ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
-      ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
+    /* Handle encoder increment step changes (Only in Normal Mode) */
+    if (!is_edit_mode) {
+      int32_t increment = Encoder_GetIncrementStep();
+      if (increment != last_increment) {
+        last_increment = increment;
+        char val_buf[16];
+        snprintf(val_buf, sizeof(val_buf), "%d ", (int)Encoder_GetValue());
+        uint16_t val_color = (increment == 10) ? MAGENTA : CYAN;
+        ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+        ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
+      }
     }
 
     if (is_playing) {
@@ -293,11 +337,14 @@ static void LoadTestPattern(void) {
 static void DrawMainScreen(Drumset *drumset) {
   ST7789_Fill(BLACK);
 
-  ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
-  char val_buf[16];
-  snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
-  ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
-  ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+  if (is_edit_mode) {
+    ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
+  } else {
+    ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+    char val_buf[16];
+    snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
+    ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+  }
 
   char step_buf[32];
   snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
@@ -306,6 +353,10 @@ static void DrawMainScreen(Drumset *drumset) {
   /* Status indicator */
   const char *status = is_playing ? "PLAYING" : "STOPPED";
   uint16_t status_color = is_playing ? GREEN : RED;
+  if (is_edit_mode) {
+    status = "EDIT CH";
+    status_color = YELLOW;
+  }
   ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* 3x2 Grid Layout
@@ -343,6 +394,46 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_FillRect(210, 130, 90, 80, BLACK);
   ST7789_DrawThickFrame(210, 130, 90, 80, 2, ORANGE);
   ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
+  ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
+
+  /* Highlight selected channel if in edit mode */
+  if (is_edit_mode) {
+    UpdateBlinker(selected_channel, 1);
+  }
+}
+
+static void UpdateModeUI(void) {
+  /* Update Header */
+  if (is_edit_mode) {
+    ST7789_FillRect(10, 10, 200, 20, BLACK); /* Clear Header Area */
+    ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
+  } else {
+    ST7789_FillRect(10, 10, 200, 20, BLACK); /* Clear Header Area */
+    ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+    char val_buf[16];
+    snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
+    ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+  }
+
+  /* Update Status Footer */
+  const char *status = is_playing ? "PLAYING" : "STOPPED";
+  uint16_t status_color = is_playing ? GREEN : RED;
+  if (is_edit_mode) {
+    status = "EDIT CH";
+    status_color = YELLOW;
+  }
+  ST7789_FillRect(10, 220, 200, 20, BLACK); /* Clear Status Area */
+  ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
+
+  /* Handle Channel Highlight */
+  if (is_edit_mode) {
+    UpdateBlinker(selected_channel, 1);
+  } else {
+    /* Clear any active highlight when exiting edit mode */
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+      UpdateBlinker(i, 0);
+    }
+  }
 }
 
 static void UpdateBlinker(uint8_t channel, uint8_t active) {
@@ -397,6 +488,9 @@ static void UpdateBlinker(uint8_t channel, uint8_t active) {
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   if (pressed) {
     if (button_id == BUTTON_START) {
+      if (is_edit_mode)
+        return;
+
       is_playing = !is_playing;
       if (is_playing) {
         Sequencer_Start();
@@ -407,7 +501,11 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         needs_ui_refresh = 1;
       }
     } else if (button_id == BUTTON_ENCODER) {
-      Encoder_ToggleIncrement();
+      if (!is_edit_mode) {
+        Encoder_ToggleIncrement();
+      }
+    } else if (button_id == BUTTON_EDIT) {
+      ToggleEditMode();
     }
   }
 }

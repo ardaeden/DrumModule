@@ -6,6 +6,7 @@
 /* Button IDs */
 #define BUTTON_START 0
 #define BUTTON_ENCODER 1
+#define BUTTON_EDIT 2
 
 /**
  * @brief Button event callback type

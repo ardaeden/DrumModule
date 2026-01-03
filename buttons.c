@@ -25,6 +25,8 @@
 #define GPIOA_PUPDR (*(volatile uint32_t *)(GPIOA_BASE + 0x0C))
 #define GPIOA_IDR (*(volatile uint32_t *)(GPIOA_BASE + 0x10))
 
+#define GPIOB_MODER (*(volatile uint32_t *)(GPIOB_BASE + 0x00))
+#define GPIOB_PUPDR (*(volatile uint32_t *)(GPIOB_BASE + 0x0C))
 #define GPIOB_IDR (*(volatile uint32_t *)(GPIOB_BASE + 0x10))
 
 /* SYSCFG Registers */
@@ -53,7 +55,7 @@
 /* State */
 static ButtonCallback button_callback = 0;
 static volatile uint8_t buttons_active_mask =
-    0; /* Bit 0: Start, Bit 1: Encoder */
+    0; /* Bit 0: Start, Bit 1: Encoder, Bit 2: Edit */
 
 void Button_Init(void) {
   /* Enable clocks */
@@ -100,6 +102,23 @@ void Button_Init(void) {
   /* Unmask EXTI6, EXTI7, EXTI8 */
   EXTI_IMR |= (1 << 6) | (1 << 7) | (1 << 8);
 
+  /* --- Configure PB9 (Edit Button) --- */
+  /* Input, Pull-Up */
+  GPIOB_MODER &= ~(3UL << (9 * 2));
+  GPIOB_PUPDR &= ~(3UL << (9 * 2));
+  GPIOB_PUPDR |= (1UL << (9 * 2));
+
+  /* PB9 -> EXTI9 (Port B = 0001) */
+  SYSCFG_EXTICR3 &= ~(0xF << 4);
+  SYSCFG_EXTICR3 |= (1 << 4);
+
+  /* EXTI9: Falling edge (Button Press, Active Low) */
+  EXTI_FTSR |= (1 << 9);
+  EXTI_RTSR &= ~(1 << 9);
+
+  /* Unmask EXTI6, EXTI7, EXTI8, EXTI9 */
+  EXTI_IMR |= (1 << 6) | (1 << 7) | (1 << 8) | (1 << 9);
+
   /* Enable EXTI9_5 interrupt in NVIC (IRQ 23) */
   NVIC_ISER0 |= (1 << 23);
 
@@ -139,6 +158,15 @@ void EXTI9_5_IRQHandler(void) {
     TIM5_CNT = 0;
     TIM5_CR1 |= (1 << 0); /* Start timer */
   }
+
+  /* Check PB9 (Edit Button) */
+  if (pr & (1 << 9)) {
+    EXTI_PR = (1 << 9);
+    EXTI_IMR &= ~(1 << 9); /* Mask EXTI9 */
+    buttons_active_mask |= (1 << BUTTON_EDIT);
+    TIM5_CNT = 0;
+    TIM5_CR1 |= (1 << 0); /* Start timer */
+  }
 }
 
 void TIM5_IRQHandler(void) {
@@ -164,6 +192,16 @@ void TIM5_IRQHandler(void) {
           button_callback(BUTTON_ENCODER, 1);
       }
       EXTI_IMR |= (1 << 8); /* Unmask */
+    }
+
+    /* Check Edit Button (PB9) */
+    if (buttons_active_mask & (1 << BUTTON_EDIT)) {
+      uint8_t val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
+      if (val == 0) {
+        if (button_callback)
+          button_callback(BUTTON_EDIT, 1);
+      }
+      EXTI_IMR |= (1 << 9); /* Unmask */
     }
 
     buttons_active_mask = 0;

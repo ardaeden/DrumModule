@@ -1429,16 +1429,18 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
       /* Draw Base Box */
       ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
 
-      /* Selection Frames (Priority: Manual Cursor > Playhead) */
+      /* Selection Frames (Priority: Manual Cursor frame + Centered Playhead
+       * Dot) */
       if (i == pattern_cursor) {
         /* Manual Selection: White thick frame */
         ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
-      } else if (i == current_play_step) {
-        /* Playhead: Bright Green frame */
-        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, GREEN);
       } else if (i == last_play_step || i == last_cursor) {
-        /* Clear old frames */
-        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, BLACK);
+        /* Clear old frames by doing nothing extra (FillRect handled it) */
+      }
+
+      if (i == current_play_step) {
+        /* Playhead: Larger centered white square */
+        ST7789_FillRect(x + 8, y + 9, 18, 18, WHITE);
       }
     }
   }

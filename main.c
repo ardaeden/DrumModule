@@ -812,7 +812,6 @@ static void LoadTestPattern(void) {
   Sequencer_SetStep(2, 31, 100);
 
   /* CLAP (Ch 3): Dub Echo - Bar 1 Only */
-  AudioMixer_SetPan(3, 100);
   Sequencer_SetStep(3, 4, 200);
   Sequencer_SetStep(3, 7, 60);
   Sequencer_SetStep(3, 10, 30);
@@ -820,14 +819,12 @@ static void LoadTestPattern(void) {
   Sequencer_SetStep(3, 20, 200);
 
   /* PERC 1 (Ch 4): Glitch Texture */
-  AudioMixer_SetPan(4, 220);
   Sequencer_SetStep(4, 11, 150);
   Sequencer_SetStep(4, 15, 100);
   Sequencer_SetStep(4, 27, 150);
   Sequencer_SetStep(4, 30, 120);
 
   /* PERC 2 (Ch 5): Deep Texture */
-  AudioMixer_SetPan(5, 128);
   Sequencer_SetStep(5, 0, 80);
   Sequencer_SetStep(5, 16, 100); // Start of Bar 2 accent
 }

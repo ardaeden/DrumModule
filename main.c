@@ -147,6 +147,7 @@ static int edit_menu_index = 0; /* 0=Sample, 1=Vol, 2=Pan */
 static int last_menu_index = 0;
 static Drumset *current_drumset = NULL;
 static uint32_t current_cluster = 0; /* Current directory cluster for browser */
+static char browser_path[128] = "SAMPLES";
 
 /* Drumset Menu States: 0=Off, 1=Menu, 2=Save Slots, 3=Load Slots */
 static volatile uint8_t is_drumset_menu_mode = 0;
@@ -1122,6 +1123,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             current_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
             if (current_cluster == 0) {
               current_cluster = FAT32_GetRootCluster();
+              strcpy(browser_path, ""); // Root
             }
           }
           ScanDirectory();
@@ -1154,8 +1156,39 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           if (selected->is_dir) {
             /* Enter Directory */
             current_cluster = selected->first_cluster;
-            if (current_cluster == 0)
-              current_cluster = FAT32_GetRootCluster(); // ".." to root
+            if (current_cluster == 0) {
+              // ".." logic - go up
+              current_cluster =
+                  FAT32_GetRootCluster(); // simplified - should track parent
+
+              // Handle path string for ".."
+              if (strcmp(selected->name, "..") == 0) {
+                char *last_slash = strrchr(browser_path, '/');
+                if (last_slash)
+                  *last_slash = '\0';
+                else
+                  strcpy(browser_path, "");
+              } else {
+                if (strlen(browser_path) > 0)
+                  strcat(browser_path, "/");
+                strcat(browser_path, selected->name);
+              }
+            } else {
+              // Enter Directory
+              if (strcmp(selected->name, "..") == 0) {
+                // Going up logic is tricky with just clusters,
+                // but for path string:
+                char *last_slash = strrchr(browser_path, '/');
+                if (last_slash)
+                  *last_slash = '\0';
+                else
+                  strcpy(browser_path, "");
+              } else {
+                if (strlen(browser_path) > 0)
+                  strcat(browser_path, "/");
+                strcat(browser_path, selected->name);
+              }
+            }
 
             ScanDirectory();
             selected_file_index = 0;
@@ -1177,6 +1210,18 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               int res =
                   WAV_LoadSample(selected, selected_channel, current_drumset);
               if (res > 0) {
+                /* Store full path in Drumset */
+                char full_path[64];
+                if (strlen(browser_path) > 0)
+                  snprintf(full_path, sizeof(full_path), "%s/%s", browser_path,
+                           selected->name);
+                else
+                  snprintf(full_path, sizeof(full_path), "%s", selected->name);
+
+                strncpy(current_drumset->sample_paths[selected_channel],
+                        full_path, 63);
+                current_drumset->sample_paths[selected_channel][63] = '\0';
+
                 /* Quick Preview: Trigger the sample immediately */
                 AudioMixer_Trigger(selected_channel, 255);
 

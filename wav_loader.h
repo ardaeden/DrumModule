@@ -16,6 +16,7 @@ typedef struct {
   uint8_t volumes[NUM_CHANNELS];
   uint8_t pans[NUM_CHANNELS];
   char sample_names[NUM_CHANNELS][16];
+  char sample_paths[NUM_CHANNELS][64];
 } Drumset;
 
 /**

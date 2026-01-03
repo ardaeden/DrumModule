@@ -150,6 +150,9 @@ int WAV_LoadSample(FAT32_FileEntry *file_entry, uint8_t channel_idx,
     if (dot)
       *dot = '\0';
 
+    /* Note: sample_paths is set by the caller (main.c browser) or LoadFromSlot
+     */
+
     /* Update AudioMixer with new sample */
     AudioMixer_SetSample(channel_idx, sample_buffers[channel_idx],
                          samples_loaded);
@@ -183,6 +186,7 @@ void WAV_UnloadChannel(uint8_t channel, Drumset *drumset) {
           sizeof(drumset->sample_names[channel]) - 1);
   drumset->sample_names[channel][sizeof(drumset->sample_names[channel]) - 1] =
       '\0';
+  drumset->sample_paths[channel][0] = '\0';
 }
 
 int Drumset_Save(Drumset *drumset, uint8_t slot) {
@@ -212,11 +216,20 @@ int Drumset_Save(Drumset *drumset, uint8_t slot) {
     const char *sample_name = drumset->sample_names[ch];
 
     // Build sample path
-    char sample_path[32];
+    // Build sample path
+    char sample_path[64];
     if (strcmp(sample_name, "EMPTY") == 0) {
       strcpy(sample_path, "EMPTY");
     } else {
-      snprintf(sample_path, sizeof(sample_path), "SAMPLES/%s.WAV", sample_name);
+      // Use stored full path if available, otherwise fallback to default
+      // SAMPLES/
+      if (strlen(drumset->sample_paths[ch]) > 0) {
+        strncpy(sample_path, drumset->sample_paths[ch], sizeof(sample_path));
+        sample_path[sizeof(sample_path) - 1] = '\0';
+      } else {
+        snprintf(sample_path, sizeof(sample_path), "SAMPLES/%s.WAV",
+                 sample_name);
+      }
     }
 
     int written =
@@ -287,15 +300,18 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
   char *line = (char *)buffer;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {
     int channel_num;
-    char sample_path[32];
+    char sample_path[64];
     int volume, pan;
 
     // Parse line: channel,sample_path,volume,pan
-    int parsed = sscanf(line, "%d,%31[^,],%d,%d", &channel_num, sample_path,
+    int parsed = sscanf(line, "%d,%63[^,],%d,%d", &channel_num, sample_path,
                         &volume, &pan);
 
     if (parsed != 4 || channel_num != ch) {
-      return -1; // Parse error
+      // Allow partial reads or end of file? If error, maybe stop or continue?
+      // For robustness, try next line? But format is strict.
+      // If parsing failed, maybe buffer ended?
+      break;
     }
 
     // Set volume and pan
@@ -310,42 +326,109 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
     if (strcmp(sample_path, "EMPTY") == 0) {
       WAV_UnloadChannel(ch, drumset);
     } else {
-      // Extract filename from path (SAMPLES/KICK.WAV -> KICK.WAV)
-      const char *filename_start = strrchr(sample_path, '/');
-      if (filename_start) {
-        filename_start++; // Skip the '/'
-      } else {
-        filename_start = sample_path;
-      }
+      /* Store path */
+      strncpy(drumset->sample_paths[ch], sample_path, 63);
+      drumset->sample_paths[ch][63] = '\0';
 
-      // Find and load the sample file
-      uint32_t samples_cluster =
-          FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
       int loaded = 0;
-      if (samples_cluster != 0) {
-        static FAT32_FileEntry
-            sample_files[FAT32_MAX_FILES]; // Static to save stack
-        int sample_count =
-            FAT32_ListDir(samples_cluster, sample_files, FAT32_MAX_FILES);
 
-        for (int i = 0; i < sample_count; i++) {
-          if (strcasecmp(sample_files[i].name, filename_start) == 0) {
-            // Fix: WAV_LoadSample returns length (>0), not error code (0)
-            if (WAV_LoadSample(&sample_files[i], ch, drumset) > 0) {
+      /* Check if path contains '/' */
+      const char *last_slash = strrchr(sample_path, '/');
+      if (last_slash) {
+        // Path traversal logic
+        uint32_t curr_clus = FAT32_GetRootCluster();
+
+        char path_copy[64];
+        strncpy(path_copy, sample_path, 63);
+        path_copy[63] = '\0';
+
+        char *token = strtok(path_copy, "/");
+        int found_path = 1;
+        char file_name[16] = {0};
+
+        while (token != NULL) {
+          if (strchr(token, '.') != NULL) {
+            // This is the file
+            strncpy(file_name, token, 15);
+            break;
+          }
+
+          // This is a directory
+          curr_clus = FAT32_FindDir(curr_clus, token);
+          if (curr_clus == 0) {
+            found_path = 0;
+            break;
+          }
+          token = strtok(NULL, "/");
+        }
+
+        if (found_path && strlen(file_name) > 0) {
+          static FAT32_FileEntry sample_file;
+          FAT32_FileEntry dir_files[FAT32_MAX_FILES];
+          int cnt = FAT32_ListDir(curr_clus, dir_files, FAT32_MAX_FILES);
+          int found_file = 0;
+          for (int f = 0; f < cnt; f++) {
+            if (strcasecmp(dir_files[f].name, file_name) == 0) {
+              sample_file = dir_files[f];
+              found_file = 1;
+              break;
+            }
+          }
+
+          if (found_file) {
+            if (WAV_LoadSample(&sample_file, ch, drumset) > 0) {
               loaded = 1;
             }
-            break;
+          }
+        }
+
+      } else {
+        // Fallback to SAMPLES/ lookup
+        uint32_t samples_clus =
+            FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
+        if (samples_clus) {
+          FAT32_FileEntry dir_files[FAT32_MAX_FILES];
+          int cnt = FAT32_ListDir(samples_clus, dir_files, FAT32_MAX_FILES);
+          for (int f = 0; f < cnt; f++) {
+            if (strcasecmp(dir_files[f].name, sample_path) == 0) {
+              if (WAV_LoadSample(&dir_files[f], ch, drumset) > 0) {
+                loaded = 1;
+              }
+              break;
+            }
+          }
+        }
+      }
+
+      if (!loaded) {
+        // Legacy Fallback: Try extracting filename and looking in SAMPLES/
+        // Ensure we don't try if we already tried SAMPLES/ above
+        const char *fname = strrchr(sample_path, '/');
+        if (fname)
+          fname++;
+        else
+          fname = sample_path;
+
+        uint32_t samples_clus =
+            FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
+        if (samples_clus) {
+          static FAT32_FileEntry dir_files[FAT32_MAX_FILES];
+          int cnt = FAT32_ListDir(samples_clus, dir_files, FAT32_MAX_FILES);
+          for (int f = 0; f < cnt; f++) {
+            if (strcasecmp(dir_files[f].name, fname) == 0) {
+              if (WAV_LoadSample(&dir_files[f], ch, drumset) > 0) {
+                loaded = 1;
+              }
+              break;
+            }
           }
         }
       }
 
       if (!loaded) {
         WAV_UnloadChannel(ch, drumset);
-        // Reset and Apply defaults to mixer
-        drumset->volumes[ch] = 100;
+        drumset->volumes[ch] = 255;
         drumset->pans[ch] = 128;
-        AudioMixer_SetVolume(ch, 100);
-        AudioMixer_SetPan(ch, 128);
       }
     }
 

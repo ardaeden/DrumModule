@@ -133,7 +133,7 @@ int Drumset_Load(const char *kit_path, Drumset *drumset) {
     scan_cluster = FAT32_GetRootCluster();
   }
 
-  FAT32_FileEntry dir_files[FAT32_MAX_FILES];
+  static FAT32_FileEntry dir_files[FAT32_MAX_FILES];
   int file_count = FAT32_ListDir(scan_cluster, dir_files, FAT32_MAX_FILES);
   if (file_count < 0)
     file_count = 0;

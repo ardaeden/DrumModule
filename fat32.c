@@ -154,32 +154,34 @@ static void copy_filename(char *dest, uint8_t *src) {
  */
 static uint32_t allocate_free_cluster(void) {
   uint32_t fat_sector = partition_start_lba + reserved_sectors;
+  static uint8_t fat_buf[512]; /* Private buffer to avoid corrupting shared
+                                  sector_buffer */
 
   /* Scan FAT sectors (up to 200 sectors to cover larger cards) */
   for (int s = 0; s < 200; s++) {
-    if (SDCARD_ReadBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
-      return 0;
+    if (SDCARD_ReadBlock(fat_sector + s, fat_buf) != SDCARD_OK) {
+      return 0xFFFFFFFF;
     }
 
     for (int i = 0; i < 128; i++) {
-      uint32_t entry = read_u32(sector_buffer, i * 4) & 0x0FFFFFFF;
+      uint32_t entry = read_u32(fat_buf, i * 4) & 0x0FFFFFFF;
       if (entry == 0x00000000) {
         /* Found free cluster */
         uint32_t cluster = (s * 128) + i;
-        if (cluster < 2)
+        if (cluster < 3) /* Cluster 2 is Root, stay away! */
           continue;
 
         /* Mark as EOF (End of Chain) */
-        write_u32(sector_buffer, i * 4, 0x0FFFFFFF);
-        if (SDCARD_WriteBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
-          return 0;
+        write_u32(fat_buf, i * 4, 0x0FFFFFFF);
+        if (SDCARD_WriteBlock(fat_sector + s, fat_buf) != SDCARD_OK) {
+          return 0xFFFFFFFF;
         }
 
         return cluster;
       }
     }
   }
-  return 0;
+  return 0; /* Not found */
 }
 
 uint32_t FAT32_GetRootCluster(void) { return root_cluster; }
@@ -350,7 +352,7 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   // Search for existing file or empty slot
   for (int sec = 0; sec < sectors_per_cluster && found_entry == -1; sec++) {
     if (SDCARD_ReadBlock(dir_sector + sec, sector_buffer) != SDCARD_OK) {
-      return -1;
+      return -2; /* Read error */
     }
 
     for (int entry = 0; entry < 16; entry++) {
@@ -387,12 +389,33 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   int use_sector = (found_entry != -1) ? found_sector : empty_sector;
 
   if (use_entry == -1) {
-    return -1;
+    return -3; /* Directory full */
   }
 
-  // Read directory sector
+  uint32_t file_cluster = 0;
+  if (found_entry != -1) {
+    /* Get existing cluster before re-reading buffer */
+    if (SDCARD_ReadBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {
+      return -2;
+    }
+    uint8_t *temp_entry = sector_buffer + (use_entry * 32);
+    uint16_t cluster_hi = read_u16(temp_entry, DIR_FSTCLUS_HI);
+    uint16_t cluster_lo = read_u16(temp_entry, DIR_FSTCLUS_LO);
+    file_cluster = ((uint32_t)cluster_hi << 16) | cluster_lo;
+  } else {
+    /* Allocate new cluster */
+    file_cluster = allocate_free_cluster();
+  }
+
+  if (file_cluster < 3 || file_cluster == 0xFFFFFFFF) {
+    return (file_cluster == 0xFFFFFFFF) ? -5 : -4;
+  }
+
+  /* CRITICAL: Re-read the directory sector here to ensure sector_buffer is
+     fresh and contains directory data, not FAT data left over from previous
+     searches or allocations */
   if (SDCARD_ReadBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {
-    return -1;
+    return -2;
   }
 
   uint8_t *dir_entry = sector_buffer + (use_entry * 32);
@@ -400,10 +423,6 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   // If new entry, clear it first
   if (found_entry == -1) {
     memset(dir_entry, 0, 32);
-
-    // Also mark next entry as 0x00 if we used a 0x00 entry
-    // to maintain end-of-directory marker if possible,
-    // but in simple implementation we just write the entry.
   }
 
   // Parse filename into 8.3 format
@@ -439,28 +458,15 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
   write_u32(dir_entry, DIR_FILE_SIZE, size);
 
-  uint32_t file_cluster = 0;
-  if (found_entry != -1) {
-    /* Reuse existing cluster */
-    uint16_t cluster_hi = read_u16(dir_entry, DIR_FSTCLUS_HI);
-    uint16_t cluster_lo = read_u16(dir_entry, DIR_FSTCLUS_LO);
-    file_cluster = ((uint32_t)cluster_hi << 16) | cluster_lo;
-  } else {
-    /* Allocate a new cluster for new file */
-    file_cluster = allocate_free_cluster();
-    if (file_cluster >= 2) {
-      write_u16(dir_entry, DIR_FSTCLUS_HI, (file_cluster >> 16) & 0xFFFF);
-      write_u16(dir_entry, DIR_FSTCLUS_LO, file_cluster & 0xFFFF);
-    }
-  }
-
-  if (file_cluster < 2) {
-    return -1;
-  }
+  /* Mark entry details in directory (now safe to edit dir_entry) */
+  dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
+  write_u32(dir_entry, DIR_FILE_SIZE, size);
+  write_u16(dir_entry, DIR_FSTCLUS_HI, (file_cluster >> 16) & 0xFFFF);
+  write_u16(dir_entry, DIR_FSTCLUS_LO, file_cluster & 0xFFFF);
 
   // Write updated directory
   if (SDCARD_WriteBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {
-    return -1;
+    return -5;
   }
 
   // Write file data
@@ -472,7 +478,7 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   }
 
   if (SDCARD_WriteBlock(data_sector, data_buffer) != SDCARD_OK) {
-    return -1;
+    return -5;
   }
 
   return 0;

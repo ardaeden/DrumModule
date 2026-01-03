@@ -212,8 +212,12 @@ int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer) {
   response = SDCARD_SendCommand(CMD24, block_addr);
   if (response != R1_READY) {
     SDCARD_SPI_CS_High();
-    return SDCARD_ERROR_READ;
+    SDCARD_SPI_TransmitReceive(0xFF);
+    return SDCARD_ERROR_WRITE;
   }
+
+  /* Send dummy clocks before data */
+  SDCARD_SPI_TransmitReceive(0xFF);
 
   /* Send data start token */
   SDCARD_SPI_TransmitReceive(DATA_START_TOKEN);
@@ -227,22 +231,30 @@ int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer) {
   SDCARD_SPI_TransmitReceive(0xFF);
   SDCARD_SPI_TransmitReceive(0xFF);
 
-  /* Read data response token */
-  response = SDCARD_SPI_TransmitReceive(0xFF);
-  if ((response & 0x1F) != 0x05) {
-    SDCARD_SPI_CS_High();
-    return SDCARD_ERROR_READ;
-  }
-
-  /* Wait for card to finish writing (busy signal) */
-  timeout = 0xFFFF;
+  /* Read data response token (wait for it) */
+  timeout = 1000;
   do {
     response = SDCARD_SPI_TransmitReceive(0xFF);
     timeout--;
-  } while ((response == 0x00) && (timeout > 0));
+  } while ((response == 0xFF) && (timeout > 0));
 
-  if (timeout == 0) {
+  if ((response & 0x1F) != 0x05) {
     SDCARD_SPI_CS_High();
+    SDCARD_SPI_TransmitReceive(0xFF);
+    return SDCARD_ERROR_WRITE;
+  }
+
+  /* Wait for card to finish writing (busy signal) */
+  /* Writes can take a long time, use a larger timeout */
+  uint32_t busy_timeout = 0x1FFFF;
+  do {
+    response = SDCARD_SPI_TransmitReceive(0xFF);
+    busy_timeout--;
+  } while ((response == 0x00) && (busy_timeout > 0));
+
+  if (busy_timeout == 0) {
+    SDCARD_SPI_CS_High();
+    SDCARD_SPI_TransmitReceive(0xFF);
     return SDCARD_ERROR_TIMEOUT;
   }
 

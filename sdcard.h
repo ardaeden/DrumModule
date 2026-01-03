@@ -14,6 +14,7 @@
 #define SDCARD_ERROR_INIT -1
 #define SDCARD_ERROR_TIMEOUT -2
 #define SDCARD_ERROR_READ -3
+#define SDCARD_ERROR_WRITE -4
 
 /**
  * @brief Initialize SD card

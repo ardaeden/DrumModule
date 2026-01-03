@@ -9,6 +9,8 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
 - **WAV Playback**: Loads samples from SD Card (FAT32).
 - **High Fidelity**: 44.1kHz stereo output via I2S (PCM5102A).
 - **Dynamic Mixing**: Per-channel volume and panning.
+- **Kit System**: Save and Load up to 100 full drum kits (KIT-001 to KIT-100).
+- **Auto-Load**: Automatically loads `KIT-001` on startup for instant playability.
 
 ### Sequencer 🎹
 - **32 Steps**: Expanded 2-bar step sequencing.
@@ -22,6 +24,8 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
   - Dynamic Step Counter (e.g., "01/32").
   - Active Step Visualizers.
   - Large Status Indicator (PLAYING/STOPPED).
+  - **Kit Info**: Currently loaded kit name displayed in footer.
+- **Safety Guards**: Playback-locked menus to prevent accidental changes during performance.
 
 ## Hardware
 
@@ -61,26 +65,27 @@ make flash
 
 ## SD Card Structure
 Format SD card as **FAT32**.
+
 ```
 /
-└── DRUMSETS/
-    └── KIT001/
-        ├── KICK.WAV
-        ├── SNARE.WAV
-        ├── HATS.WAV
-        ├── CLAP.WAV
-        ├── PERC1.WAV
-        └── PERC2.WAV
+├── DRUMSETS/
+│   ├── KIT-001.DRM   (Text-based kit definition)
+│   └── ...
+└── SAMPLES/
+    ├── KICK.WAV
+    ├── SNARE.WAV
+    ├── HATS.WAV
+    └── ...
 ```
 *Note: Samples must be 44.1kHz, 16-bit PCM Mono.*
 
 ## Development Status
-✅ **Phase 4 Complete**:
-- [x] Expanded to 6 Channels.
-- [x] Hardware Clock Output implemented.
-- [x] Codebase optimized and cleaned.
-- [x] Scable Sequencer (32 Steps supported).
-- [x] UI refined (Dynamic counters, readable fonts).
+✅ **Phase 5 Complete**:
+- [x] **Full Save/Load System**: 100 Slots (KIT-001.DRM).
+- [x] **Robust Boot Sequence**: Auto-load mixer sync fixed.
+- [x] **UI Polish**: "Kit" terminology, flicker-free rendering, playback guards.
+- [x] **Code Cleanup**: Removed legacy test patterns and dead code.
+- [x] **Performance**: Optimized directory scanning and display updates.
 
 ## Credits
 

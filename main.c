@@ -382,8 +382,13 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
 }
 
 static void DrawDrumsetMenu(uint8_t full_redraw) {
+  static int last_start_slot = -1;
+  static int last_current_idx = -1;
+
   if (full_redraw) {
     ST7789_Fill(BLACK);
+    last_start_slot = -1; // Reset on mode change
+    last_current_idx = -1;
   }
 
   if (is_drumset_menu_mode == 1) {
@@ -410,6 +415,11 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
     if (start_slot > 93)
       start_slot = 93; /* Ensure we can show 8 slots */
 
+    if (start_slot != last_start_slot && !full_redraw) {
+      ST7789_FillRect(0, 40, 240, 200, BLACK); // Clear list area on scroll
+    }
+    last_start_slot = start_slot;
+
     for (int i = 0; i < 8; i++) {
       uint8_t slot_num = start_slot + i;
       if (slot_num > 100)
@@ -433,6 +443,9 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
         strcat(slot_text, " [X]");
       }
 
+      /* Clear row before drawing to prevent trail artifacts */
+      ST7789_FillRect(10, y_pos, 220, 20, BLACK);
+
       uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
       ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
                          YELLOW, BLACK, 2);
@@ -454,12 +467,20 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
         }
       }
 
+      if (current_idx != last_current_idx && !full_redraw) {
+        ST7789_FillRect(0, 40, 240, 200, BLACK); // Clear list area on scroll
+      }
+      last_current_idx = current_idx;
+
       /* Display slots around current selection */
       for (int i = -3; i <= 4; i++) {
         int idx = current_idx + i;
         if (idx >= 0 && idx < occupied_slot_count) {
           uint8_t slot_num = occupied_slots[idx];
           uint16_t y_pos = 50 + ((i + 3) * 20);
+
+          /* Clear row before drawing */
+          ST7789_FillRect(10, y_pos, 220, 20, BLACK);
 
           char slot_text[20];
           snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]", slot_num);

@@ -703,9 +703,9 @@ int main(void) {
 
         /* Reset STEP counter display */
         char step_buf[32];
-        snprintf(step_buf, sizeof(step_buf), "01/%02d      ",
+        snprintf(step_buf, sizeof(step_buf), "01/%02d",
                  Sequencer_GetStepCount());
-        ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
+        ST7789_WriteString(255, 10, step_buf, WHITE, BLACK, 2);
 
         /* Reset any active blinkers without full screen redraw */
         for (int i = 0; i < NUM_CHANNELS; i++) {
@@ -743,9 +743,9 @@ int main(void) {
         uint8_t step = Sequencer_GetCurrentStep();
         if (step != last_step) {
           char buf[32];
-          snprintf(buf, sizeof(buf), "%02d/%02d      ", step + 1,
+          snprintf(buf, sizeof(buf), "%02d/%02d", step + 1,
                    Sequencer_GetStepCount());
-          ST7789_WriteString(240, 10, buf, WHITE, BLACK, 2);
+          ST7789_WriteString(255, 10, buf, WHITE, BLACK, 2);
 
           for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
             uint8_t velocity = Sequencer_GetStep(i, step);
@@ -844,7 +844,7 @@ static void DrawMainScreen(Drumset *drumset) {
 
   char step_buf[32];
   snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
-  ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
+  ST7789_WriteString(255, 10, step_buf, WHITE, BLACK, 2);
 
   /* Status indicator */
   const char *status = is_playing ? "PLAYING" : "STOPPED";

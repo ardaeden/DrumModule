@@ -38,6 +38,7 @@ static uint32_t reserved_sectors;
 static uint32_t fat_size;
 static uint32_t root_cluster;
 static uint32_t first_data_sector;
+static uint32_t partition_start_lba;
 
 /**
  * @brief Read 16-bit little-endian value
@@ -80,7 +81,7 @@ static void write_u32(uint8_t *buf, uint16_t offset, uint32_t value) {
 }
 
 int FAT32_Init(void) {
-  uint32_t partition_start = 0;
+  partition_start_lba = 0;
 
   /* Initialize SD card */
   if (SDCARD_Init() != SDCARD_OK) {
@@ -101,12 +102,12 @@ int FAT32_Init(void) {
     if (partition_type == 0x0B || partition_type == 0x0C ||
         partition_type == 0x04 || partition_type == 0x06) {
       /* Get partition start sector (LBA) at offset 454 */
-      partition_start = read_u32(sector_buffer, 454);
+      partition_start_lba = read_u32(sector_buffer, 454);
     }
   }
 
   /* Read boot sector (either sector 0 or partition start) */
-  if (SDCARD_ReadBlock(partition_start, sector_buffer) != SDCARD_OK) {
+  if (SDCARD_ReadBlock(partition_start_lba, sector_buffer) != SDCARD_OK) {
     return -1;
   }
 
@@ -120,7 +121,7 @@ int FAT32_Init(void) {
 
   /* Calculate first data sector (relative to partition start) */
   first_data_sector =
-      partition_start + reserved_sectors + (num_fats * fat_size);
+      partition_start_lba + reserved_sectors + (num_fats * fat_size);
 
   return 0;
 }
@@ -146,6 +147,39 @@ static void copy_filename(char *dest, uint8_t *src) {
   }
 
   dest[j] = '\0';
+}
+
+/**
+ * @brief Find and allocate a free cluster in FAT
+ */
+static uint32_t allocate_free_cluster(void) {
+  uint32_t fat_sector = partition_start_lba + reserved_sectors;
+
+  /* Scan FAT sectors (up to 10 sectors for now to keep it fast) */
+  for (int s = 0; s < 10; s++) {
+    if (SDCARD_ReadBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
+      return 0;
+    }
+
+    for (int i = 0; i < 128; i++) {
+      uint32_t entry = read_u32(sector_buffer, i * 4);
+      if (entry == 0x00000000) {
+        /* Found free cluster */
+        uint32_t cluster = (s * 128) + i;
+        if (cluster < 2)
+          continue; /* Skip reserved clusters */
+
+        /* Mark it as occupied (EOF) */
+        write_u32(sector_buffer, i * 4, 0x0FFFFFFF);
+        if (SDCARD_WriteBlock(fat_sector + s, sector_buffer) != SDCARD_OK) {
+          return 0;
+        }
+
+        return cluster;
+      }
+    }
+  }
+  return 0;
 }
 
 uint32_t FAT32_GetRootCluster(void) { return root_cluster; }
@@ -398,14 +432,20 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
 
   uint32_t file_cluster = 0;
   if (found_entry != -1) {
-    // Reuse existing cluster!
+    /* Reuse existing cluster */
     uint16_t cluster_hi = read_u16(dir_entry, DIR_FSTCLUS_HI);
     uint16_t cluster_lo = read_u16(dir_entry, DIR_FSTCLUS_LO);
     file_cluster = ((uint32_t)cluster_hi << 16) | cluster_lo;
+  } else {
+    /* Allocate a new cluster for new file */
+    file_cluster = allocate_free_cluster();
+    if (file_cluster >= 2) {
+      write_u16(dir_entry, DIR_FSTCLUS_HI, (file_cluster >> 16) & 0xFFFF);
+      write_u16(dir_entry, DIR_FSTCLUS_LO, file_cluster & 0xFFFF);
+    }
   }
 
   if (file_cluster < 2) {
-    // New file allocation not supported yet to avoid corruption
     return -1;
   }
 

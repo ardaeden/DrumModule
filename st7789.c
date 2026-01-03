@@ -246,45 +246,27 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
 
   uint8_t char_index = c - 32;
 
-  for (int i = 0; i < 5; i++) {
-    uint8_t line = font_default[char_index][i];
-    for (int j = 0; j < 7; j++) {
-      if (line & (1 << j)) {
-        if (size == 1) {
-          ST7789_DrawPixel(x + i, y + j, color);
-        } else {
-          ST7789_SetAddressWindow(x + (i * size), y + (j * size),
-                                  x + (i * size) + size - 1,
-                                  y + (j * size) + size - 1);
-          DC_DATA();
-          CS_LOW();
-          uint8_t color_hi = color >> 8;
-          uint8_t color_lo = color & 0xFF;
-          for (int k = 0; k < size * size; k++) {
-            SPI_WriteData8(color_hi);
-            SPI_WriteData8(color_lo);
-          }
-          SPI_WaitBusy();
-          CS_HIGH();
+  /* Draw 6x8 area to ensure full cell clearing for flicker-free overwriting */
+  for (int i = 0; i < 6; i++) {
+    uint8_t line = (i < 5) ? font_default[char_index][i] : 0;
+    for (int j = 0; j < 8; j++) {
+      uint16_t draw_color = (line & (1 << j)) ? color : bg;
+      if (size == 1) {
+        ST7789_DrawPixel(x + i, y + j, draw_color);
+      } else {
+        ST7789_SetAddressWindow(x + (i * size), y + (j * size),
+                                x + (i * size) + size - 1,
+                                y + (j * size) + size - 1);
+        DC_DATA();
+        CS_LOW();
+        uint8_t color_hi = draw_color >> 8;
+        uint8_t color_lo = draw_color & 0xFF;
+        for (int k = 0; k < size * size; k++) {
+          SPI_WriteData8(color_hi);
+          SPI_WriteData8(color_lo);
         }
-      } else if (bg != color) {
-        if (size == 1) {
-          ST7789_DrawPixel(x + i, y + j, bg);
-        } else {
-          ST7789_SetAddressWindow(x + (i * size), y + (j * size),
-                                  x + (i * size) + size - 1,
-                                  y + (j * size) + size - 1);
-          DC_DATA();
-          CS_LOW();
-          uint8_t color_hi = bg >> 8;
-          uint8_t color_lo = bg & 0xFF;
-          for (int k = 0; k < size * size; k++) {
-            SPI_WriteData8(color_hi);
-            SPI_WriteData8(color_lo);
-          }
-          SPI_WaitBusy();
-          CS_HIGH();
-        }
+        SPI_WaitBusy();
+        CS_HIGH();
       }
     }
   }

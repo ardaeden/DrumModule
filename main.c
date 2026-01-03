@@ -464,12 +464,23 @@ static void TriggerChannelEdit(void) {
   Encoder_SetValue(0);
   mode_changed = 1;
 }
-
 static void ExitChannelEdit(void) {
   is_channel_edit_mode = 0;
   /* Restore Drumset Edit config */
   Encoder_SetLimits(0, NUM_CHANNELS - 1);
   Encoder_SetValue(selected_channel);
+  mode_changed = 1;
+  full_redraw_needed = 1;
+}
+static void ExitDrumsetMenu(void) {
+  is_drumset_menu_mode = 0;
+  if (is_edit_mode) {
+    Encoder_SetLimits(0, NUM_CHANNELS - 1);
+    Encoder_SetValue(selected_channel);
+  } else {
+    Encoder_SetLimits(30, 300);
+    Encoder_SetValue(Sequencer_GetBPM());
+  }
   mode_changed = 1;
   full_redraw_needed = 1;
 }
@@ -925,8 +936,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             }
           } else {
             /* BACK */
-            is_drumset_menu_mode = 0;
-            mode_changed = 1;
+            ExitDrumsetMenu();
           }
         } else if (is_drumset_menu_mode == 2) {
           /* Save to selected slot */
@@ -974,17 +984,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             ;
 
           /* Exit menu */
-          is_drumset_menu_mode = 0;
-          mode_changed = 1;
-          full_redraw_needed = 1;
+          ExitDrumsetMenu();
         }
       } else if (button_id == BUTTON_EDIT) {
         /* Back in drumset menu */
         if (is_drumset_menu_mode == 1) {
           /* Exit menu */
-          is_drumset_menu_mode = 0;
-          mode_changed = 1;
-          full_redraw_needed = 1;
+          ExitDrumsetMenu();
         } else {
           /* Go back to main menu */
           is_drumset_menu_mode = 1;

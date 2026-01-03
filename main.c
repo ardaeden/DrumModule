@@ -412,29 +412,30 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
 
     for (int i = 0; i < 8; i++) {
       uint8_t slot_num = start_slot + i;
-      if (slot_num > 100)
-        break;
-
       uint16_t y_pos = 50 + (i * 20);
-
-      /* Check if occupied */
-      int is_occupied = 0;
-      for (int j = 0; j < occupied_slot_count; j++) {
-        if (occupied_slots[j] == slot_num) {
-          is_occupied = 1;
-          break;
-        }
-      }
-
-      /* Pad with spaces to overwrite artifacts without FillRect */
       char slot_text[25];
-      snprintf(slot_text, sizeof(slot_text), "Slot %03d %s           ",
-               slot_num, is_occupied ? "[X]" : "   ");
 
-      uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
-      ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
-                         YELLOW, BLACK, 2);
-      ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
+      if (slot_num <= 100) {
+        /* Check if occupied */
+        int is_occupied = 0;
+        for (int j = 0; j < occupied_slot_count; j++) {
+          if (occupied_slots[j] == slot_num) {
+            is_occupied = 1;
+            break;
+          }
+        }
+
+        snprintf(slot_text, sizeof(slot_text), "Slot %03d %s           ",
+                 slot_num, is_occupied ? "[X]" : "   ");
+
+        uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
+        ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
+                           YELLOW, BLACK, 2);
+        ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
+      } else {
+        /* Blank out row if beyond Slot 100 */
+        ST7789_WriteString(10, y_pos, "                     ", BLACK, BLACK, 2);
+      }
     }
   } else if (is_drumset_menu_mode == 3) {
     /* Load Slots - only show occupied */
@@ -451,14 +452,14 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
           break;
         }
       }
+
       /* Display slots around current selection */
       for (int i = -3; i <= 4; i++) {
         int idx = current_idx + i;
+        uint16_t y_pos = 50 + ((i + 3) * 20);
+
         if (idx >= 0 && idx < occupied_slot_count) {
           uint8_t slot_num = occupied_slots[idx];
-          uint16_t y_pos = 50 + ((i + 3) * 20);
-
-          /* Pad with spaces to overwrite previous row data */
           char slot_text[25];
           snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]           ",
                    slot_num);
@@ -467,6 +468,10 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
           ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
                              YELLOW, BLACK, 2);
           ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
+        } else {
+          /* Blank out invalid row positions */
+          ST7789_WriteString(10, y_pos, "                     ", BLACK, BLACK,
+                             2);
         }
       }
     }

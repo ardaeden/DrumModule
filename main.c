@@ -41,6 +41,12 @@
 #define PWR_CR (*(volatile uint32_t *)(PWR_BASE + 0x00))
 #define FLASH_ACR (*(volatile uint32_t *)(FLASH_BASE + 0x00))
 
+/* SysTick Registers */
+#define STK_CTRL (*(volatile uint32_t *)0xE000E010)
+#define STK_LOAD (*(volatile uint32_t *)0xE000E014)
+#define STK_VAL (*(volatile uint32_t *)0xE000E018)
+#define STK_CALIB (*(volatile uint32_t *)0xE000E01C)
+
 /* GPIO Registers */
 #define GPIOA_MODER (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x00))
 #define GPIOA_PUPDR (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x0C))
@@ -48,6 +54,9 @@
 
 #define GPIOC_MODER (*(volatile uint32_t *)(GPIOC_BASE + 0x00))
 #define GPIOC_ODR (*(volatile uint32_t *)(GPIOC_BASE + 0x14))
+
+#define GPIOB_BASE (AHB1PERIPH_BASE + 0x0400UL)
+#define GPIOB_IDR (*(volatile uint32_t *)(GPIOB_BASE + 0x10))
 
 /* RCC Control Register Bits */
 #define RCC_CR_HSION (1 << 0)
@@ -69,6 +78,12 @@ void SystemInit(void) {
  * @brief Dummy init function to satisfy libc
  */
 void _init(void) {}
+
+static volatile uint32_t ms_ticks = 0;
+
+void SysTick_Handler(void) { ms_ticks++; }
+
+uint32_t HAL_GetTick(void) { return ms_ticks; }
 
 /**
  * @brief Configure system clocks
@@ -138,7 +153,11 @@ static int drumset_menu_index = 0;  /* 0=Save, 1=Load, 2=Back */
 static uint8_t selected_slot = 1;   /* Current slot selection (1-100) */
 static uint8_t occupied_slots[100]; /* List of occupied slots */
 static int occupied_slot_count = 0;
-static uint32_t button_edit_click_count = 0; /* For double-click detection */
+
+/* Long-press detection */
+static uint32_t button_edit_start_time = 0;
+static uint8_t button_edit_handled = 0;
+static uint8_t button_edit_pressed = 0;
 
 /* Helper: case-insensitive string ends with check */
 static int str_ends_with(const char *str, const char *suffix) {
@@ -473,7 +492,6 @@ static void ExitChannelEdit(void) {
 }
 static void ExitDrumsetMenu(void) {
   is_drumset_menu_mode = 0;
-  button_edit_click_count = 0; // Reset click counter
 
   if (is_edit_mode) {
     Encoder_SetLimits(0, NUM_CHANNELS - 1);
@@ -529,6 +547,11 @@ int main(void) {
 
   AudioMixer_Init();
 
+  /* Configure SysTick for 1ms (assuming 96MHz HCLK) */
+  STK_LOAD = 96000 - 1;
+  STK_VAL = 0;
+  STK_CTRL = (1 << 0) | (1 << 1) | (1 << 2); /* ENABLE, TICKINT, CLKSOURCE */
+
   /* SD initialization and sample auto-load (Slot 1) */
   (void)FAT32_Init();
   static Drumset drumset;
@@ -564,6 +587,7 @@ int main(void) {
 
   int32_t last_encoder = 0;
   int32_t last_increment = 0;
+  uint32_t channel_blink_times[NUM_CHANNELS] = {0}; // For sequencer blinkers
 
   while (1) {
     /* Handle Mode Change */
@@ -572,6 +596,9 @@ int main(void) {
       last_encoder = Encoder_GetValue();
       if (is_channel_edit_mode) {
         DrawChannelEditScreen(1);
+        full_redraw_needed = 0;
+      } else if (is_drumset_menu_mode) {
+        DrawDrumsetMenu();
         full_redraw_needed = 0;
       } else {
         if (full_redraw_needed) {
@@ -583,40 +610,36 @@ int main(void) {
       }
     }
 
-    /* Handle UI refresh when playback stops */
-    if (needs_ui_refresh) {
-      needs_ui_refresh = 0;
-      last_step = 0xFF;
-
-      /* Reset STEP counter display */
-      /* Reset STEP counter display */
-      char step_buf[32];
-      snprintf(step_buf, sizeof(step_buf), "01/%02d      ",
-               Sequencer_GetStepCount());
-      ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
-
-      /* Reset any active blinkers without full screen redraw */
-      for (int i = 0; i < NUM_CHANNELS; i++) {
-        if (channel_states[i]) {
-          UpdateBlinker(i, 0);
-          channel_states[i] = 0;
-        }
+    /* Long-press detection for Drumset Menu */
+    if (button_edit_pressed && !button_edit_handled && !is_drumset_menu_mode) {
+      if (HAL_GetTick() - button_edit_start_time >= 1000) {
+        /* Long-press (1s) detected */
+        is_drumset_menu_mode = 1;
+        drumset_menu_index = 0;
+        Encoder_SetLimits(0, 2);
+        Encoder_SetValue(0);
+        DrawDrumsetMenu();
+        button_edit_handled = 1;
       }
-      GPIOC_ODR |= (1 << 13); /* LED OFF */
     }
 
-    /* Update status text when play state changes */
-    static uint8_t last_playing = 0xFF;
-    if (is_playing != last_playing) {
-      const char *status = is_playing ? "PLAYING" : "STOPPED";
-      uint16_t status_color = is_playing ? GREEN : RED;
-      ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
-      last_playing = is_playing;
+    /* Robust EDIT button release detection by polling GPIO (PB9 is Bit 9) */
+    if (button_edit_pressed) {
+      uint8_t current_val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
+      if (current_val == 1) { /* Physcially released (Pull-up) */
+        button_edit_pressed = 0;
+        if (!button_edit_handled && !is_drumset_menu_mode) {
+          /* Short press (Click) detected - toggle edit mode */
+          ToggleEditMode();
+        }
+      }
     }
 
     /* Handle BPM/Channel updates from encoder */
     int32_t encoder_val = Encoder_GetValue();
     if (encoder_val != last_encoder) {
+      last_encoder = encoder_val;
+
       if (is_drumset_menu_mode == 1) {
         /* Drumset menu navigation */
         drumset_menu_index = encoder_val;
@@ -649,12 +672,8 @@ int main(void) {
         DrawChannelEditScreen(0);
       } else if (is_edit_mode) {
         /* Handle Channel Selection */
-        uint8_t new_channel = (uint8_t)encoder_val;
-        if (new_channel != selected_channel) {
-          UpdateBlinker(selected_channel, 0); /* Unhighlight old */
-          selected_channel = new_channel;
-          UpdateBlinker(selected_channel, 1); /* Highlight new */
-        }
+        selected_channel = (uint8_t)encoder_val;
+        mode_changed = 1; // Trigger UI update for channel highlight
       } else {
         /* Handle BPM Change */
         Sequencer_SetBPM((uint16_t)encoder_val);
@@ -666,12 +685,43 @@ int main(void) {
         ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
         ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
       }
-      last_encoder = encoder_val;
     }
 
-    /* Handle encoder increment step changes (Only in Normal Mode) */
-    if (!is_edit_mode && !is_channel_edit_mode) {
-      int32_t increment = Encoder_GetIncrementStep();
+    /* UI guards for background updates while menus are active */
+    if (!is_drumset_menu_mode && !is_channel_edit_mode) {
+      /* Handle UI refresh when playback stops */
+      if (needs_ui_refresh) {
+        needs_ui_refresh = 0;
+        last_step = 0xFF;
+
+        /* Reset STEP counter display */
+        char step_buf[32];
+        snprintf(step_buf, sizeof(step_buf), "01/%02d      ",
+                 Sequencer_GetStepCount());
+        ST7789_WriteString(240, 10, step_buf, WHITE, BLACK, 2);
+
+        /* Reset any active blinkers without full screen redraw */
+        for (int i = 0; i < NUM_CHANNELS; i++) {
+          if (channel_states[i]) {
+            UpdateBlinker(i, 0);
+            channel_states[i] = 0;
+          }
+        }
+        GPIOC_ODR |= (1 << 13); /* LED OFF */
+      }
+
+      /* Update status text when play state changes */
+      static uint8_t last_playing = 0xFF;
+      if (is_playing != last_playing) {
+        const char *status = is_playing ? "PLAYING" : "STOPPED";
+        uint16_t status_color = is_playing ? GREEN : RED;
+        ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
+        last_playing = is_playing;
+      }
+
+      /* Update BPM if changed (from external means or sync) */
+      int32_t increment =
+          Encoder_GetIncrementStep(); // Use GetIncrementStep for UI display
       if (increment != last_increment) {
         last_increment = increment;
         char val_buf[16];
@@ -681,35 +731,42 @@ int main(void) {
         ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
       }
 
-      /* Reset double-click counter after any encoder activity */
-      button_edit_click_count = 0;
-    }
+      /* Sequencer animation */
+      if (is_playing) {
+        uint8_t step = Sequencer_GetCurrentStep();
+        if (step != last_step) {
+          char buf[32];
+          snprintf(buf, sizeof(buf), "%02d/%02d      ", step + 1,
+                   Sequencer_GetStepCount());
+          ST7789_WriteString(240, 10, buf, WHITE, BLACK, 2);
 
-    if (is_playing) {
-      uint8_t step = Sequencer_GetCurrentStep();
-      if (step != last_step) {
-        char buf[32];
-        snprintf(buf, sizeof(buf), "%02d/%02d      ", step + 1,
-                 Sequencer_GetStepCount());
-        ST7789_WriteString(240, 10, buf, WHITE, BLACK, 2);
+          for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
+            uint8_t velocity = Sequencer_GetStep(i, step);
+            if (velocity > 0) {
+              UpdateBlinker(i, 1);
+              channel_states[i] = 1;
+              channel_blink_times[i] =
+                  HAL_GetTick(); // Record time for blink duration
+            }
+          }
 
-        /* Update blinkers based on pattern triggers */
+          /* LED Blink on quarter notes */
+          if ((step % 4) == 0) {
+            GPIOC_ODR &= ~(1 << 13); /* ON */
+          } else {
+            GPIOC_ODR |= (1 << 13); /* OFF */
+          }
+          last_step = step;
+        }
+
+        // Turn off blinkers after a short duration
         for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
-          uint8_t velocity = Sequencer_GetStep(i, step);
-          uint8_t active = (velocity > 0);
-          if (active != channel_states[i]) {
-            UpdateBlinker(i, active);
-            channel_states[i] = active;
+          if (channel_states[i] &&
+              (HAL_GetTick() - channel_blink_times[i] > 100)) {
+            UpdateBlinker(i, 0);
+            channel_states[i] = 0;
           }
         }
-
-        /* LED Blink on quarter notes */
-        if ((step % 4) == 0) {
-          GPIOC_ODR &= ~(1 << 13); /* ON */
-        } else {
-          GPIOC_ODR |= (1 << 13); /* OFF */
-        }
-        last_step = step;
       }
     }
 
@@ -863,12 +920,23 @@ static void UpdateModeUI(void) {
   ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* Handle Channel Highlight */
+  static uint8_t last_drawn_channel = 0xFF;
   if (is_edit_mode) {
-    UpdateBlinker(selected_channel, 1);
+    if (last_drawn_channel != selected_channel) {
+      /* Unhighlight previous if it was valid */
+      if (last_drawn_channel < NUM_CHANNELS) {
+        UpdateBlinker(last_drawn_channel, 0);
+      }
+      UpdateBlinker(selected_channel, 1);
+      last_drawn_channel = selected_channel;
+    }
   } else {
     /* Clear any active highlight when exiting edit mode */
-    for (int i = 0; i < NUM_CHANNELS; i++) {
-      UpdateBlinker(i, 0);
+    if (last_drawn_channel != 0xFF) {
+      for (int i = 0; i < NUM_CHANNELS; i++) {
+        UpdateBlinker(i, 0);
+      }
+      last_drawn_channel = 0xFF;
     }
   }
 }
@@ -1022,7 +1090,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
 
   if (pressed) {
     if (button_id == BUTTON_START) {
-      if (is_edit_mode)
+      if (is_edit_mode || is_drumset_menu_mode || is_channel_edit_mode)
         return;
 
       is_playing = !is_playing;
@@ -1148,26 +1216,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        /* Double-click detection for drumset menu */
-        /* Simple counter-based approach: increment on each click */
-        button_edit_click_count++;
-
-        if (button_edit_click_count >= 2) {
-          /* Double click detected - open drumset menu */
-          is_drumset_menu_mode = 1;
-          drumset_menu_index = 0;
-          Encoder_SetLimits(0, 2);
-          Encoder_SetValue(0);
-          DrawDrumsetMenu();
-          button_edit_click_count = 0;
-        } else {
-          /* First click - toggle edit mode */
-          ToggleEditMode();
-        }
+        /* START logic for long-press: mark as pressed and record time */
+        button_edit_pressed = 1;
+        button_edit_start_time = HAL_GetTick();
+        button_edit_handled = 0;
       }
     }
   } else {
-    /* Button released - reset click counter after delay */
-    /* Note: This is simplified, ideally would use a timer */
+    /* Button released - Handled in main loop polling for BUTTON_EDIT */
   }
 }

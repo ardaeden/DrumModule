@@ -690,8 +690,8 @@ int main(void) {
         char val_buf[16];
         snprintf(val_buf, sizeof(val_buf), "%d ", (int)encoder_val);
         uint16_t val_color =
-            (Encoder_GetIncrementStep() == 10) ? MAGENTA : CYAN;
-        ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+            (Encoder_GetIncrementStep() == 10) ? MAGENTA : WHITE;
+        ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
         ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
       }
     }
@@ -735,8 +735,8 @@ int main(void) {
         last_increment = increment;
         char val_buf[16];
         snprintf(val_buf, sizeof(val_buf), "%d ", (int)Encoder_GetValue());
-        uint16_t val_color = (increment == 10) ? MAGENTA : CYAN;
-        ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+        uint16_t val_color = (increment == 10) ? MAGENTA : WHITE;
+        ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
         ST7789_WriteString(60, 10, val_buf, val_color, BLACK, 2);
       }
 
@@ -835,10 +835,10 @@ static void DrawMainScreen(Drumset *drumset) {
   if (is_edit_mode) {
     ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
   } else {
-    ST7789_WriteString(10, 10, "BPM:", CYAN, BLACK, 2);
+    ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
     char val_buf[16];
     snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
-    ST7789_WriteString(60, 10, val_buf, CYAN, BLACK, 2);
+    ST7789_WriteString(60, 10, val_buf, WHITE, BLACK, 2);
   }
 
   char step_buf[32];
@@ -851,7 +851,7 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
 
   /* Show Loaded Kit Name in Footer (Right Aligned, Yellow) */
-  ST7789_WriteString(230, 220, drumset->name, YELLOW, BLACK, 2);
+  ST7789_WriteString(230, 220, drumset->name, WHITE, BLACK, 2);
 
   /* 3x2 Grid Layout
    * Width 90px, Height 80px
@@ -917,7 +917,7 @@ static void UpdateModeUI(void) {
     } else {
       char val_buf[20];
       snprintf(val_buf, sizeof(val_buf), "BPM: %d        ", current_bpm);
-      ST7789_WriteString(10, 10, val_buf, CYAN, BLACK, 2);
+      ST7789_WriteString(10, 10, val_buf, WHITE, BLACK, 2);
     }
     last_is_edit = is_edit_mode;
     last_bpm = current_bpm;

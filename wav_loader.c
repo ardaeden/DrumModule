@@ -376,6 +376,11 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
     return -1;
   }
 
+  // Null-terminate to prevent parsing junk in the rest of the sector
+  if (target_file->size < 512) {
+    buffer[target_file->size] = '\0';
+  }
+
   // Parse text format
   char *line = (char *)buffer;
   for (int ch = 0; ch < NUM_CHANNELS; ch++) {

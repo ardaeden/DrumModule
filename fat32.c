@@ -396,10 +396,18 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
   write_u32(dir_entry, DIR_FILE_SIZE, size);
 
-  // Use cluster 2 + entry number for file storage
-  uint32_t file_cluster = 2 + use_entry;
-  write_u16(dir_entry, DIR_FSTCLUS_HI, (file_cluster >> 16) & 0xFFFF);
-  write_u16(dir_entry, DIR_FSTCLUS_LO, file_cluster & 0xFFFF);
+  uint32_t file_cluster = 0;
+  if (found_entry != -1) {
+    // Reuse existing cluster!
+    uint16_t cluster_hi = read_u16(dir_entry, DIR_FSTCLUS_HI);
+    uint16_t cluster_lo = read_u16(dir_entry, DIR_FSTCLUS_LO);
+    file_cluster = ((uint32_t)cluster_hi << 16) | cluster_lo;
+  }
+
+  if (file_cluster < 2) {
+    // New file allocation not supported yet to avoid corruption
+    return -1;
+  }
 
   // Write updated directory
   if (SDCARD_WriteBlock(dir_sector + use_sector, sector_buffer) != SDCARD_OK) {

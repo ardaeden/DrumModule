@@ -46,6 +46,7 @@
 #define STK_LOAD (*(volatile uint32_t *)0xE000E014)
 #define STK_VAL (*(volatile uint32_t *)0xE000E018)
 #define STK_CALIB (*(volatile uint32_t *)0xE000E01C)
+#define NVIC_IPR_BASE ((volatile uint8_t *)0xE000E400)
 
 /* GPIO Registers */
 #define GPIOA_MODER (*(volatile uint32_t *)(AHB1PERIPH_BASE + 0x0000UL + 0x00))
@@ -574,6 +575,16 @@ int main(void) {
   STK_LOAD = 96000 - 1;
   STK_VAL = 0;
   STK_CTRL = (1 << 0) | (1 << 1) | (1 << 2); /* ENABLE, TICKINT, CLKSOURCE */
+
+  /* --- Configure Interrupt Priorities --- */
+  /* DMA1 Stream 4 (Audio): IRQ 15 */
+  NVIC_IPR_BASE[15] = (0 << 4); /* Highest Priority */
+  /* TIM2 (Sequencer Clock): IRQ 28 */
+  NVIC_IPR_BASE[28] = (0 << 4); /* Highest Priority */
+  /* EXTI lines (Buttons/Encoder): IRQ 6, 7, 23 */
+  NVIC_IPR_BASE[6] = (2 << 4);  /* Lower Priority */
+  NVIC_IPR_BASE[7] = (2 << 4);  /* Lower Priority */
+  NVIC_IPR_BASE[23] = (2 << 4); /* Lower Priority */
 
   /* SD initialization and sample auto-load (Slot 1) */
   (void)FAT32_Init();

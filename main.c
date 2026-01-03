@@ -529,11 +529,22 @@ int main(void) {
 
   AudioMixer_Init();
 
-  /* SD initialization and sample loading */
+  /* SD initialization and sample auto-load (Slot 1) */
   (void)FAT32_Init();
   static Drumset drumset;
+  memset(&drumset, 0, sizeof(Drumset));
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    strcpy(drumset.sample_names[i], "EMPTY");
+    drumset.volumes[i] = 255;
+    drumset.pans[i] = 127;
+  }
   current_drumset = &drumset;
-  Drumset_Load("/DRUMSETS/KIT001", &drumset);
+
+  /* Attempt to load Slot 1 on boot */
+  if (Drumset_LoadFromSlot(&drumset, 1) != 0) {
+    /* If failed or not found, ensure AudioMixer is clean (already zeroed/EMPTY)
+     */
+  }
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
     AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);

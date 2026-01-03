@@ -191,9 +191,8 @@ static void ScanDirectory(void) {
     /* Skip dotfiles (hidden), but allow ".." */
     if (all_files[i].name[0] == '.') {
       if (strcmp(all_files[i].name, "..") != 0) {
-        continue; /* Skip "." and other hidden files */
+        continue;
       }
-      /* else: it is "..", keep it */
     }
 
     /* Explicitly filter out TRASH folder if attributes didn't catch it */
@@ -286,8 +285,7 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
       }
 
       uint8_t vol = current_drumset->volumes[selected_channel];
-      snprintf(buf, sizeof(buf), "VOL: %d   ",
-               vol); /* Padding to clear old nums */
+      snprintf(buf, sizeof(buf), "VOL: %d   ", vol);
       ST7789_WriteString(10, 88, buf, c1, bg1, 2);
       /* Bar Graph (Split Fill for Flicker-Free Update) */
       ST7789_DrawThickFrame(130, 85, 100, 20, 1, c1);
@@ -1211,7 +1209,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
                   WAV_LoadSample(selected, selected_channel, current_drumset);
               if (res > 0) {
                 /* Store full path in Drumset */
-                char full_path[64];
+                char full_path[256];
                 if (strlen(browser_path) > 0)
                   snprintf(full_path, sizeof(full_path), "%s/%s", browser_path,
                            selected->name);

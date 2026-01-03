@@ -400,6 +400,10 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
     drumset->volumes[ch] = volume;
     drumset->pans[ch] = pan;
 
+    // Apply to AudioMixer
+    AudioMixer_SetVolume(ch, volume);
+    AudioMixer_SetPan(ch, pan);
+
     // Load sample
     if (strcmp(sample_path, "EMPTY") == 0) {
       WAV_UnloadChannel(ch, drumset);
@@ -435,6 +439,11 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
 
       if (!loaded) {
         WAV_UnloadChannel(ch, drumset);
+        // Reset and Apply defaults to mixer
+        drumset->volumes[ch] = 100;
+        drumset->pans[ch] = 128;
+        AudioMixer_SetVolume(ch, 100);
+        AudioMixer_SetPan(ch, 128);
       }
     }
 

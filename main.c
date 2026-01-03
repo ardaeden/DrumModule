@@ -474,6 +474,8 @@ static void ExitChannelEdit(void) {
 }
 static void ExitDrumsetMenu(void) {
   is_drumset_menu_mode = 0;
+  button_edit_click_count = 0; // Reset click counter
+
   if (is_edit_mode) {
     Encoder_SetLimits(0, NUM_CHANNELS - 1);
     Encoder_SetValue(selected_channel);
@@ -481,8 +483,9 @@ static void ExitDrumsetMenu(void) {
     Encoder_SetLimits(30, 300);
     Encoder_SetValue(Sequencer_GetBPM());
   }
-  mode_changed = 1;
+
   full_redraw_needed = 1;
+  mode_changed = 1;
 }
 
 static void ToggleEditMode(void) {
@@ -958,7 +961,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           for (volatile int i = 0; i < 2000000; i++)
             ;
 
-          /* Return to main menu */
+          /* Return to main menu with status update */
+          ST7789_Fill(BLACK);
           is_drumset_menu_mode = 1;
           Encoder_SetLimits(0, 2);
           Encoder_SetValue(0);

@@ -415,6 +415,7 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
       // Find and load the sample file
       uint32_t samples_cluster =
           FAT32_FindDir(FAT32_GetRootCluster(), "SAMPLES");
+      int loaded = 0;
       if (samples_cluster != 0) {
         FAT32_FileEntry sample_files[FAT32_MAX_FILES];
         int sample_count =
@@ -422,10 +423,16 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
 
         for (int i = 0; i < sample_count; i++) {
           if (strcasecmp(sample_files[i].name, filename_start) == 0) {
-            WAV_LoadSample(&sample_files[i], ch, drumset);
+            if (WAV_LoadSample(&sample_files[i], ch, drumset) == 0) {
+              loaded = 1;
+            }
             break;
           }
         }
+      }
+
+      if (!loaded) {
+        WAV_UnloadChannel(ch, drumset);
       }
     }
 

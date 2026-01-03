@@ -1337,6 +1337,17 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       if (pressed) {
         /* Toggle Pattern Edit Mode - Block if in Drumset Edit or other menus */
         if (!is_drumset_menu_mode && !is_channel_edit_mode && !is_edit_mode) {
+          if (is_pattern_detail_mode) {
+            /* Quick return to Grid Mode from Step Edit */
+            is_pattern_detail_mode = 0;
+            Encoder_SetLimits(0, NUM_CHANNELS - 1);
+            Encoder_SetValue(selected_channel);
+            Encoder_ResetIncrement();
+            full_redraw_needed = 1;
+            mode_changed = 1;
+            return;
+          }
+
           is_pattern_edit_mode = !is_pattern_edit_mode;
           mode_changed = 1;
 
@@ -1363,7 +1374,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               Encoder_SetLimits(0, NUM_CHANNELS - 1);
               Encoder_SetValue(selected_channel);
             } else {
-              Encoder_SetLimits(30, 300);
+              Encoder_SetLimits(40, 300);
               Encoder_SetValue(Sequencer_GetBPM());
             }
           }

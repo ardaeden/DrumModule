@@ -85,13 +85,13 @@ void Sequencer_CycleStep(uint8_t channel, uint8_t step) {
   if (channel < NUM_CHANNELS && step < MAX_STEPS) {
     uint8_t current = current_pattern.steps[channel][step];
     if (current == 0)
-      current_pattern.steps[channel][step] = 32; /* x0.125 */
-    else if (current == 32)
-      current_pattern.steps[channel][step] = 64; /* x0.25 */
-    else if (current == 64)
+      current_pattern.steps[channel][step] = 255; /* x1.0 */
+    else if (current == 255)
       current_pattern.steps[channel][step] = 128; /* x0.5 */
     else if (current == 128)
-      current_pattern.steps[channel][step] = 255; /* x1.0 */
+      current_pattern.steps[channel][step] = 64; /* x0.25 */
+    else if (current == 64)
+      current_pattern.steps[channel][step] = 32; /* x0.125 */
     else
       current_pattern.steps[channel][step] = 0; /* OFF */
   }

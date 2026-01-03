@@ -202,8 +202,7 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
         bg1 = BLACK;
       }
 
-      /* Only fill rect if NOT in edit mode (or if full redraw) to avoid flicker
-       */
+      /* Only fill background if not actively editing (to prevent flicker) */
       if (is_channel_edit_mode != 3 || full_redraw) {
         ST7789_FillRect(0, 80, 240, 30, bg1);
       }
@@ -230,6 +229,7 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
         bg2 = BLACK;
       }
 
+      /* Only fill background if not actively editing (to prevent flicker) */
       if (is_channel_edit_mode != 4 || full_redraw) {
         ST7789_FillRect(0, 120, 240, 30, bg2);
       }
@@ -754,13 +754,15 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           Encoder_SetLimits(0, 255);
           Encoder_SetValue(current_drumset->volumes[selected_channel]);
           is_channel_edit_mode = 3;
-          DrawChannelEditScreen(0); /* Same screen, just highlight change */
+          ST7789_FillRect(0, 80, 240, 30, BLACK); /* Clear blue selection */
+          DrawChannelEditScreen(0); /* Redraw will show edit state */
         } else if (edit_menu_index == 2) {
           /* Go to Pan Edit */
           Encoder_SetLimits(0, 255);
           Encoder_SetValue(current_drumset->pans[selected_channel]);
           is_channel_edit_mode = 4;
-          DrawChannelEditScreen(0); /* Same screen, just highlight change */
+          ST7789_FillRect(0, 120, 240, 30, BLACK); /* Clear blue selection */
+          DrawChannelEditScreen(0); /* Redraw will show edit state */
         }
       } else if (is_channel_edit_mode == 2) {
         /* Load Selected Sample */
@@ -796,7 +798,10 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         is_channel_edit_mode = 1;
         Encoder_SetLimits(0, 2);
         Encoder_SetValue(edit_menu_index);
-        mode_changed = 1;
+        /* Don't set mode_changed = 1 to avoid full clear.
+           Force redraw of the row by invalidating last_menu_index. */
+        last_menu_index = -1;
+        DrawChannelEditScreen(0);
       } else if (is_edit_mode) {
         /* Enter Channel Edit */
         TriggerChannelEdit();

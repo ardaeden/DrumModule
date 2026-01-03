@@ -403,17 +403,15 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
     /* Save Slots */
     ST7789_WriteString(10, 10, "SAVE TO SLOT", YELLOW, BLACK, 2);
 
-    /* Display 8 slots centered around selected_slot */
-    int start_slot = selected_slot - 3;
-    if (start_slot < 1)
-      start_slot = 1;
+    /* Display 8 slots in a stable window (starts at start_slot) */
+    int start_slot = ((selected_slot - 1) / 8) * 8 + 1;
     if (start_slot > 93)
       start_slot = 93;
 
     for (int i = 0; i < 8; i++) {
       uint8_t slot_num = start_slot + i;
       uint16_t y_pos = 50 + (i * 20);
-      char slot_text[25];
+      char slot_text[20];
 
       if (slot_num <= 100) {
         /* Check if occupied */
@@ -425,16 +423,18 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
           }
         }
 
-        snprintf(slot_text, sizeof(slot_text), "Slot %03d %s           ",
-                 slot_num, is_occupied ? "[X]" : "   ");
+        /* 16 chars max to avoid wrapping at x=40 (40 + 16*12 = 232 < 240) */
+        snprintf(slot_text, sizeof(slot_text), "Slot %03d %s  ", slot_num,
+                 is_occupied ? "[X]" : "   ");
 
         uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
         ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
                            YELLOW, BLACK, 2);
         ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
       } else {
-        /* Blank out row if beyond Slot 100 */
-        ST7789_WriteString(10, y_pos, "                     ", BLACK, BLACK, 2);
+        /* Blank out row securely */
+        ST7789_WriteString(10, y_pos, "                ", BLACK, BLACK, 2);
+        ST7789_WriteString(40, y_pos, "                ", BLACK, BLACK, 2);
       }
     }
   } else if (is_drumset_menu_mode == 3) {
@@ -453,25 +453,28 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
         }
       }
 
-      /* Display slots around current selection */
-      for (int i = -3; i <= 4; i++) {
-        int idx = current_idx + i;
-        uint16_t y_pos = 50 + ((i + 3) * 20);
+      /* Use stable window scrolling for LOAD menu as well */
+      int start_idx = (current_idx / 8) * 8;
 
-        if (idx >= 0 && idx < occupied_slot_count) {
+      /* Always draw 8 rows to clean up artifacts */
+      for (int i = 0; i < 8; i++) {
+        int idx = start_idx + i;
+        uint16_t y_pos = 50 + (i * 20);
+
+        if (idx < occupied_slot_count) {
           uint8_t slot_num = occupied_slots[idx];
-          char slot_text[25];
-          snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]           ",
-                   slot_num);
+          char slot_text[20];
+          /* 16 chars max */
+          snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]  ", slot_num);
 
           uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
           ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
                              YELLOW, BLACK, 2);
           ST7789_WriteString(40, y_pos, slot_text, color, BLACK, 2);
         } else {
-          /* Blank out invalid row positions */
-          ST7789_WriteString(10, y_pos, "                     ", BLACK, BLACK,
-                             2);
+          /* Blank out invalid row positions securely */
+          ST7789_WriteString(10, y_pos, "                ", BLACK, BLACK, 2);
+          ST7789_WriteString(40, y_pos, "                ", BLACK, BLACK, 2);
         }
       }
     }

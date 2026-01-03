@@ -580,6 +580,13 @@ int main(void) {
     AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);
   }
 
+  /* FORCE SYNC: Explicitly apply Volume and Pan to Mixer after loading samples
+   */
+  for (int i = 0; i < NUM_CHANNELS; i++) {
+    AudioMixer_SetVolume(i, drumset.volumes[i]);
+    AudioMixer_SetPan(i, drumset.pans[i]);
+  }
+
   /* Start audio subsystem as early as possible for PLLI2S stability */
   int audio_status = I2S_Init();
   if (audio_status == 0) {

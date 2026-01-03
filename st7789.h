@@ -29,5 +29,6 @@ void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, uint16_t color,
                         uint16_t bg, uint8_t size);
 void ST7789_DrawThickFrame(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
                            uint16_t thickness, uint16_t color);
+void ST7789_DrawVLine(uint16_t x, uint16_t y, uint16_t h, uint16_t color);
 
 #endif

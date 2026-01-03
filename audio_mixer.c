@@ -6,8 +6,9 @@ typedef struct {
   int16_t *sample_data;
   uint32_t sample_length;
   uint32_t playback_pos;
-  uint8_t volume;
-  uint8_t pan; /* 0 = Left, 128 = Center, 255 = Right */
+  uint8_t volume;  /* Current trigger velocity */
+  uint8_t mix_vol; /* Channel Mix Volume (0-255) */
+  uint8_t pan;     /* 0 = Left, 128 = Center, 255 = Right */
   uint8_t active;
 } AudioChannel;
 
@@ -17,7 +18,8 @@ static AudioChannel channels[NUM_CHANNELS];
 void AudioMixer_Init(void) {
   memset(channels, 0, sizeof(channels));
   for (int i = 0; i < NUM_CHANNELS; i++) {
-    channels[i].pan = 128; /* Default center */
+    channels[i].pan = 128;     /* Default center */
+    channels[i].mix_vol = 255; /* Default max volume */
   }
 }
 
@@ -39,6 +41,12 @@ void AudioMixer_SetPan(uint8_t channel, uint8_t pan) {
   if (channel >= NUM_CHANNELS)
     return;
   channels[channel].pan = pan;
+}
+
+void AudioMixer_SetVolume(uint8_t channel, uint8_t volume) {
+  if (channel >= NUM_CHANNELS)
+    return;
+  channels[channel].mix_vol = volume;
 }
 
 void AudioMixer_Trigger(uint8_t channel, uint8_t velocity) {
@@ -67,6 +75,9 @@ void AudioMixer_Process(int16_t *output, uint32_t length) {
 
         /* Apply volume (velocity) */
         sample = (sample * channels[ch].volume) >> 8;
+
+        /* Apply mix volume */
+        sample = (sample * channels[ch].mix_vol) >> 8;
 
         /* Apply panning */
         int32_t pan = channels[ch].pan;

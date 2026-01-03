@@ -339,3 +339,7 @@ void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, uint16_t color,
     x += (6 * size);
   }
 }
+
+void ST7789_DrawVLine(uint16_t x, uint16_t y, uint16_t h, uint16_t color) {
+  ST7789_FillRect(x, y, 1, h, color);
+}

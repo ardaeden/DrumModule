@@ -11,6 +11,14 @@
 #include <stdint.h>
 #include <stdio.h>
 
+/* Color definitions */
+#ifndef GRAY
+#define GRAY 0x7BEF
+#endif
+#ifndef DARKBLUE
+#define DARKBLUE 0x0010
+#endif
+
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL
 #define AHB1PERIPH_BASE (PERIPH_BASE + 0x00020000UL)
@@ -102,6 +110,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
 /* Global state for display and control */
 static volatile uint8_t is_playing = 0;
 static volatile uint8_t is_edit_mode = 0; /* 0=Normal, 1=Drumset Edit */
+/* Channel Edit Mode States: 0=Off, 1=Menu, 2=Browser, 3=Vol, 4=Pan */
+static volatile uint8_t is_channel_edit_mode = 0;
 static volatile uint8_t selected_channel = 0;
 static volatile uint32_t saved_bpm = 120;
 static volatile uint8_t mode_changed = 0;
@@ -109,6 +119,206 @@ static volatile uint8_t mode_changed = 0;
 static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t needs_ui_refresh = 0;
+static volatile uint8_t full_redraw_needed = 0;
+
+static FAT32_FileEntry file_list[FAT32_MAX_FILES];
+static int file_count = 0;
+static int selected_file_index = 0;
+static int last_selected_file_index = 0;
+static int edit_menu_index = 0; /* 0=Sample, 1=Vol, 2=Pan */
+static int last_menu_index = 0;
+static Drumset *current_drumset = NULL;
+
+static void ScanRootFiles(void) {
+  file_count = FAT32_ListRootFiles(file_list, FAT32_MAX_FILES);
+  /* Filter for .WAV only? For now list all, WAV check is in loader */
+  if (file_count < 0)
+    file_count = 0;
+}
+
+static void DrawChannelEditScreen(uint8_t full_redraw) {
+  if (full_redraw) {
+    ST7789_Fill(BLACK);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "CH %d EDIT", selected_channel);
+    ST7789_WriteString(10, 10, buf, YELLOW, BLACK, 2);
+  }
+
+  if (is_channel_edit_mode == 1 || is_channel_edit_mode == 3 ||
+      is_channel_edit_mode == 4) {
+    char buf[32];
+
+    /* Determine which rows to draw */
+    int draw_r0 = full_redraw;
+    int draw_r1 = full_redraw;
+    int draw_r2 = full_redraw;
+
+    /* Mode 1: Menu Navigation */
+    if (is_channel_edit_mode == 1 && !full_redraw) {
+      if (edit_menu_index != last_menu_index) {
+        if (last_menu_index == 0 || edit_menu_index == 0)
+          draw_r0 = 1;
+        if (last_menu_index == 1 || edit_menu_index == 1)
+          draw_r1 = 1;
+        if (last_menu_index == 2 || edit_menu_index == 2)
+          draw_r2 = 1;
+      }
+    }
+
+    /* Mode 3: Vol Edit - Only update R1 */
+    if (is_channel_edit_mode == 3) {
+      draw_r1 = 1;
+      draw_r0 = 0;
+      draw_r2 = 0;
+    }
+
+    /* Mode 4: Pan Edit - Only update R2 */
+    if (is_channel_edit_mode == 4) {
+      draw_r2 = 1;
+      draw_r0 = 0;
+      draw_r1 = 0;
+    }
+
+    int highlight_row = -1;
+    if (is_channel_edit_mode == 1)
+      highlight_row = edit_menu_index;
+
+    /* Row 0: Sample Name */
+    if (draw_r0) {
+      uint16_t c0 = (highlight_row == 0) ? WHITE : GRAY;
+      uint16_t bg0 = (highlight_row == 0) ? DARKBLUE : BLACK;
+      ST7789_FillRect(0, 40, 240, 30, bg0);
+      snprintf(buf, sizeof(buf), "SMP: %s",
+               current_drumset->sample_names[selected_channel]);
+      ST7789_WriteString(10, 48, buf, c0, bg0, 2);
+    }
+
+    /* Row 1: Volume */
+    if (draw_r1) {
+      uint16_t c1 = (highlight_row == 1) ? WHITE : GRAY;
+      uint16_t bg1 = (highlight_row == 1) ? DARKBLUE : BLACK;
+      if (is_channel_edit_mode == 3) {
+        c1 = RED;
+        bg1 = BLACK;
+      }
+
+      /* Only fill rect if NOT in edit mode (or if full redraw) to avoid flicker
+       */
+      if (is_channel_edit_mode != 3 || full_redraw) {
+        ST7789_FillRect(0, 80, 240, 30, bg1);
+      }
+
+      uint8_t vol = current_drumset->volumes[selected_channel];
+      snprintf(buf, sizeof(buf), "VOL: %d   ",
+               vol); /* Padding to clear old nums */
+      ST7789_WriteString(10, 88, buf, c1, bg1, 2);
+      /* Bar Graph (Split Fill for Flicker-Free Update) */
+      ST7789_DrawThickFrame(130, 85, 100, 20, 1, c1);
+      int bar_w = (vol * 96) / 255;
+      /* Draw filled part */
+      ST7789_FillRect(132, 87, bar_w, 16, c1);
+      /* Draw empty part */
+      ST7789_FillRect(132 + bar_w, 87, 96 - bar_w, 16, bg1);
+    }
+
+    /* Row 2: Pan */
+    if (draw_r2) {
+      uint16_t c2 = (highlight_row == 2) ? WHITE : GRAY;
+      uint16_t bg2 = (highlight_row == 2) ? DARKBLUE : BLACK;
+      if (is_channel_edit_mode == 4) {
+        c2 = RED;
+        bg2 = BLACK;
+      }
+
+      if (is_channel_edit_mode != 4 || full_redraw) {
+        ST7789_FillRect(0, 120, 240, 30, bg2);
+      }
+
+      uint8_t pan = current_drumset->pans[selected_channel];
+      char pan_char = 'C';
+      if (pan < 120)
+        pan_char = 'L';
+      if (pan > 136)
+        pan_char = 'R';
+      snprintf(buf, sizeof(buf), "PAN: %c %d   ", pan_char, pan);
+      ST7789_WriteString(10, 128, buf, c2, bg2, 2);
+
+      /* Pan Graph (3-Chunk Fill for Flicker-Free Update) */
+      ST7789_DrawThickFrame(130, 125, 100, 20, 1, c2);
+      int x_pan = 132 + ((pan * 96) / 255);
+      int cursor_w = 4;
+      int x_start = 132;
+      int width = 96;
+
+      /* Left BG */
+      if (x_pan - 2 > x_start) {
+        ST7789_FillRect(x_start, 127, (x_pan - 2) - x_start, 16, bg2);
+      }
+      /* Cursor */
+      ST7789_FillRect(x_pan - 2, 127, cursor_w, 16,
+                      (is_channel_edit_mode == 4) ? RED : c2);
+      /* Right BG */
+      if (x_pan + 2 < x_start + width) {
+        ST7789_FillRect(x_pan + 2, 127, (x_start + width) - (x_pan + 2), 16,
+                        bg2);
+      }
+
+      /* Redraw Center Marker if not covered by cursor */
+      if (x_pan - 2 > 180 || x_pan + 2 < 180) {
+        ST7789_DrawVLine(180, 125, 20, c2);
+      }
+    }
+
+    last_menu_index = edit_menu_index;
+
+  } else if (is_channel_edit_mode == 2) {
+    /* FILE BROWSER */
+    if (full_redraw) {
+      ST7789_WriteString(150, 10, "BROWSE", GREEN, BLACK, 2);
+    }
+
+    for (int i = 0; i < 8 && i < file_count; i++) {
+      /* Optimize: Only redraw if full_redraw OR if this row changed selection
+       * state */
+      int is_selected = (i == selected_file_index);
+      int was_selected = (i == last_selected_file_index);
+
+      if (full_redraw || is_selected != was_selected ||
+          (full_redraw == 0 &&
+           (i == selected_file_index || i == last_selected_file_index))) {
+        uint16_t color = is_selected ? WHITE : GRAY;
+        uint16_t y_pos = 40 + (i * 20);
+
+        if (is_selected) {
+          ST7789_FillRect(0, y_pos, 240, 20, DARKBLUE);
+        } else {
+          ST7789_FillRect(0, y_pos, 240, 20, BLACK);
+        }
+        ST7789_WriteString(10, y_pos, file_list[i].name, color,
+                           is_selected ? DARKBLUE : BLACK, 2);
+      }
+    }
+    last_selected_file_index = selected_file_index;
+  }
+}
+
+static void TriggerChannelEdit(void) {
+  is_channel_edit_mode = 1; /* Go to Menu */
+  edit_menu_index = 0;
+  last_menu_index = 0;
+  Encoder_SetLimits(0, 2); /* 3 Menu Items */
+  Encoder_SetValue(0);
+  mode_changed = 1;
+}
+
+static void ExitChannelEdit(void) {
+  is_channel_edit_mode = 0;
+  /* Restore Drumset Edit config */
+  Encoder_SetLimits(0, NUM_CHANNELS - 1);
+  Encoder_SetValue(selected_channel);
+  mode_changed = 1;
+  full_redraw_needed = 1;
+}
 
 static void ToggleEditMode(void) {
   if (is_playing)
@@ -155,6 +365,7 @@ int main(void) {
   /* SD initialization and sample loading */
   (void)FAT32_Init();
   static Drumset drumset;
+  current_drumset = &drumset;
   Drumset_Load("/DRUMSETS/KIT001", &drumset);
 
   for (int i = 0; i < NUM_CHANNELS; i++) {
@@ -181,7 +392,17 @@ int main(void) {
     if (mode_changed) {
       mode_changed = 0;
       last_encoder = Encoder_GetValue();
-      UpdateModeUI();
+      if (is_channel_edit_mode) {
+        DrawChannelEditScreen(1);
+        full_redraw_needed = 0;
+      } else {
+        if (full_redraw_needed) {
+          DrawMainScreen(current_drumset);
+          full_redraw_needed = 0;
+        } else {
+          UpdateModeUI();
+        }
+      }
     }
 
     /* Handle UI refresh when playback stops */
@@ -218,7 +439,23 @@ int main(void) {
     /* Handle BPM/Channel updates from encoder */
     int32_t encoder_val = Encoder_GetValue();
     if (encoder_val != last_encoder) {
-      if (is_edit_mode) {
+      if (is_channel_edit_mode == 1) {
+        edit_menu_index = encoder_val;
+        DrawChannelEditScreen(0);
+      } else if (is_channel_edit_mode == 2) {
+        selected_file_index = encoder_val;
+        DrawChannelEditScreen(0);
+      } else if (is_channel_edit_mode == 3) {
+        /* Volume Edit */
+        current_drumset->volumes[selected_channel] = (uint8_t)encoder_val;
+        AudioMixer_SetVolume(selected_channel, (uint8_t)encoder_val);
+        DrawChannelEditScreen(0);
+      } else if (is_channel_edit_mode == 4) {
+        /* Pan Edit */
+        current_drumset->pans[selected_channel] = (uint8_t)encoder_val;
+        AudioMixer_SetPan(selected_channel, (uint8_t)encoder_val);
+        DrawChannelEditScreen(0);
+      } else if (is_edit_mode) {
         /* Handle Channel Selection */
         uint8_t new_channel = (uint8_t)encoder_val;
         if (new_channel != selected_channel) {
@@ -241,7 +478,7 @@ int main(void) {
     }
 
     /* Handle encoder increment step changes (Only in Normal Mode) */
-    if (!is_edit_mode) {
+    if (!is_edit_mode && !is_channel_edit_mode) {
       int32_t increment = Encoder_GetIncrementStep();
       if (increment != last_increment) {
         last_increment = increment;
@@ -501,11 +738,77 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         needs_ui_refresh = 1;
       }
     } else if (button_id == BUTTON_ENCODER) {
-      if (!is_edit_mode) {
+      if (is_channel_edit_mode == 1) {
+        /* MENU SELECTION */
+        if (edit_menu_index == 0) {
+          /* Go to Browser */
+          ScanRootFiles();
+          selected_file_index = 0;
+          last_selected_file_index = -1; /* Force redraw of selected item */
+          Encoder_SetLimits(0, file_count > 0 ? file_count - 1 : 0);
+          Encoder_SetValue(0);
+          is_channel_edit_mode = 2;
+          DrawChannelEditScreen(1);
+        } else if (edit_menu_index == 1) {
+          /* Go to Vol Edit */
+          Encoder_SetLimits(0, 255);
+          Encoder_SetValue(current_drumset->volumes[selected_channel]);
+          is_channel_edit_mode = 3;
+          DrawChannelEditScreen(0); /* Same screen, just highlight change */
+        } else if (edit_menu_index == 2) {
+          /* Go to Pan Edit */
+          Encoder_SetLimits(0, 255);
+          Encoder_SetValue(current_drumset->pans[selected_channel]);
+          is_channel_edit_mode = 4;
+          DrawChannelEditScreen(0); /* Same screen, just highlight change */
+        }
+      } else if (is_channel_edit_mode == 2) {
+        /* Load Selected Sample */
+        if (file_count > 0) {
+          int res = WAV_LoadSample(&file_list[selected_file_index],
+                                   selected_channel, current_drumset);
+          if (res > 0) {
+            /* Success Popup */
+            ST7789_FillRect(50, 100, 140, 40, BLACK);
+            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+            ST7789_WriteString(75, 112, "LOADED!", GREEN, BLACK, 2);
+
+            for (volatile int i = 0; i < 2000000; i++)
+              ;
+            /* Return to Menu */
+            is_channel_edit_mode = 1;
+            Encoder_SetLimits(0, 2);
+            Encoder_SetValue(0);
+            DrawChannelEditScreen(1);
+          } else {
+            /* Error Popup */
+            ST7789_FillRect(50, 100, 140, 40, BLACK);
+            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+            ST7789_WriteString(80, 112, "ERROR!", RED, BLACK, 2);
+
+            for (volatile int i = 0; i < 2000000; i++)
+              ;
+            DrawChannelEditScreen(1);
+          }
+        }
+      } else if (is_channel_edit_mode == 3 || is_channel_edit_mode == 4) {
+        /* Confirm Vol/Pan Change -> Return to Menu */
+        is_channel_edit_mode = 1;
+        Encoder_SetLimits(0, 2);
+        Encoder_SetValue(edit_menu_index);
+        mode_changed = 1;
+      } else if (is_edit_mode) {
+        /* Enter Channel Edit */
+        TriggerChannelEdit();
+      } else {
         Encoder_ToggleIncrement();
       }
     } else if (button_id == BUTTON_EDIT) {
-      ToggleEditMode();
+      if (is_channel_edit_mode) {
+        ExitChannelEdit();
+      } else {
+        ToggleEditMode();
+      }
     }
   }
 }

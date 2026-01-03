@@ -131,6 +131,15 @@ int Drumset_Load(const char *kit_path, Drumset *drumset) {
   if (file_count < 0)
     file_count = 0;
 
+  if (file_count < 0)
+    file_count = 0;
+
+  /* Initialize defaults */
+  for (int c = 0; c < NUM_CHANNELS; c++) {
+    drumset->volumes[c] = 255;
+    drumset->pans[c] = 128;
+  }
+
   int channel = 0;
 
   /* Load first 4 WAV files found */
@@ -204,4 +213,40 @@ int Drumset_Load(const char *kit_path, Drumset *drumset) {
 
   (void)kit_path;
   return 0;
+}
+
+int WAV_LoadSample(FAT32_FileEntry *file_entry, uint8_t channel_idx,
+                   Drumset *drumset) {
+  if (channel_idx >= NUM_CHANNELS) {
+    return -1;
+  }
+
+  /* Load this file */
+  drumset->samples[channel_idx] = sample_buffers[channel_idx];
+  int samples_loaded = load_wav_to_buffer(
+      file_entry, sample_buffers[channel_idx], MAX_SAMPLE_SIZE);
+
+  if (samples_loaded > 0) {
+    drumset->lengths[channel_idx] = samples_loaded;
+
+    /* Use filename (without .wav) as label */
+    strncpy(drumset->sample_names[channel_idx], file_entry->name,
+            sizeof(drumset->sample_names[channel_idx]) - 1);
+    drumset->sample_names[channel_idx]
+                         [sizeof(drumset->sample_names[channel_idx]) - 1] =
+        '\0';
+
+    /* Remove .wav extension */
+    char *dot = strchr(drumset->sample_names[channel_idx], '.');
+    if (dot)
+      *dot = '\0';
+  } else {
+    /* Clear channel on error */
+    drumset->lengths[channel_idx] = 1000;
+    for (uint32_t j = 0; j < 1000; j++) {
+      sample_buffers[channel_idx][j] = 0;
+    }
+  }
+
+  return samples_loaded;
 }

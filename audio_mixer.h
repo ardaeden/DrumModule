@@ -27,6 +27,13 @@ void AudioMixer_SetSample(uint8_t channel, int16_t *sample_data,
 void AudioMixer_SetPan(uint8_t channel, uint8_t pan);
 
 /**
+ * @brief Set volume (mix level) for channel
+ * @param channel Channel number (0-5)
+ * @param volume Volume level (0-255)
+ */
+void AudioMixer_SetVolume(uint8_t channel, uint8_t volume);
+
+/**
  * @brief Trigger sample on channel
  * @param channel Channel number (0-3)
  * @param velocity Velocity (0-255)

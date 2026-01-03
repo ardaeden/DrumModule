@@ -617,8 +617,9 @@ int main(void) {
       }
     }
 
-    /* Long-press detection for Drumset Menu */
-    if (button_edit_pressed && !button_edit_handled && !is_drumset_menu_mode) {
+    /* Long-press detection for Drumset Menu - only if not playing */
+    if (button_edit_pressed && !button_edit_handled && !is_drumset_menu_mode &&
+        !is_playing) {
       if (HAL_GetTick() - button_edit_start_time >= 1000) {
         /* Long-press (1s) detected */
         is_drumset_menu_mode = 1;
@@ -635,7 +636,7 @@ int main(void) {
       uint8_t current_val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
       if (current_val == 1) { /* Physcially released (Pull-up) */
         button_edit_pressed = 0;
-        if (!button_edit_handled && !is_drumset_menu_mode) {
+        if (!button_edit_handled && !is_drumset_menu_mode && !is_playing) {
           /* Short press (Click) detected - toggle edit mode */
           ToggleEditMode();
         }
@@ -1225,10 +1226,12 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        /* START logic for long-press: mark as pressed and record time */
-        button_edit_pressed = 1;
-        button_edit_start_time = HAL_GetTick();
-        button_edit_handled = 0;
+        /* Only track EDIT button if not playing */
+        if (!is_playing) {
+          button_edit_pressed = 1;
+          button_edit_start_time = HAL_GetTick();
+          button_edit_handled = 0;
+        }
       }
     }
   } else {

@@ -124,6 +124,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw);
 static void UpdateModeUI(void);
 static void UpdateBlinker(uint8_t channel, uint8_t active);
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
+static void DrawStepEditScreen(uint8_t full_redraw);
 
 /* Global state for display and control */
 static volatile uint8_t is_playing = 0;
@@ -134,7 +135,8 @@ static volatile uint8_t selected_channel = 0;
 static volatile uint32_t saved_bpm = 120;
 static volatile uint8_t mode_changed = 0;
 static volatile uint8_t is_pattern_edit_mode = 0;
-static volatile int8_t pattern_cursor = 0;
+static volatile uint8_t is_pattern_detail_mode = 0;
+static volatile int8_t pattern_cursor = 0; /* Step cursor for detail mode */
 
 static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
@@ -616,6 +618,9 @@ int main(void) {
       } else if (is_drumset_menu_mode) {
         DrawDrumsetMenu(1); // Ensure full redraw on mode change
         full_redraw_needed = 0;
+      } else if (is_pattern_detail_mode) {
+        DrawStepEditScreen(1);
+        full_redraw_needed = 0;
       } else {
         if (full_redraw_needed) {
           DrawMainScreen(current_drumset);
@@ -688,6 +693,9 @@ int main(void) {
         current_drumset->pans[selected_channel] = (uint8_t)encoder_val;
         AudioMixer_SetPan(selected_channel, (uint8_t)encoder_val);
         DrawChannelEditScreen(0);
+      } else if (is_pattern_detail_mode) {
+        pattern_cursor = (int8_t)encoder_val;
+        DrawStepEditScreen(0); /* Incremental redraw of step cursor */
       } else if (is_edit_mode || is_pattern_edit_mode) {
         /* Handle Channel Selection in both Normal Edit and Pattern Edit */
         selected_channel = (uint8_t)encoder_val;
@@ -1040,67 +1048,28 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               Encoder_SetValue(0);
               selected_slot = occupied_slots[0];
             }
-            DrawDrumsetMenu(1); /* Full redraw for mode change */
+            mode_changed = 1;
+            full_redraw_needed = 1;
           } else if (drumset_menu_index == 1) {
             /* SAVE Kit */
             occupied_slot_count = Drumset_GetOccupiedSlots(occupied_slots, 100);
             is_drumset_menu_mode = 2; /* Save Slot Selection */
             Encoder_SetLimits(1, 100);
             Encoder_SetValue(selected_slot);
-            DrawDrumsetMenu(1); /* Full redraw for mode change */
+            mode_changed = 1;
+            full_redraw_needed = 1;
           } else if (drumset_menu_index == 2) {
             /* BACK */
             ExitDrumsetMenu();
           }
-        } else if (is_drumset_menu_mode == 2) {
-          /* Save to selected slot */
-          int result = Drumset_Save(current_drumset, selected_slot);
-
-          /* Show result */
-          ST7789_FillRect(30, 90, 180, 60, BLACK);
-          ST7789_DrawThickFrame(30, 90, 180, 60, 2, WHITE);
-          if (result == 0) {
-            ST7789_WriteString(60, 102, "SAVED!", GREEN, BLACK, 2);
-            char slot_msg[20];
-            snprintf(slot_msg, sizeof(slot_msg), "Kit-%03d", selected_slot);
-            ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
-          } else {
-            ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
-            char err_msg[20];
-            snprintf(err_msg, sizeof(err_msg), "Code: %d", result);
-            ST7789_WriteString(50, 122, err_msg, YELLOW, BLACK, 1);
-          }
-
-          for (volatile int i = 0; i < 10000000; i++)
-            ;
-
-          /* Return to main menu with status update */
-          ST7789_Fill(BLACK);
-          is_drumset_menu_mode = 1;
-          Encoder_SetLimits(0, 2);
-          Encoder_SetValue(0);
-          DrawDrumsetMenu(1); // Full redraw for mode change
+          is_drumset_menu_mode =
+              2; /* Still in Save (error state handled by redraw) */
+          mode_changed = 1;
+          full_redraw_needed = 1;
         } else if (is_drumset_menu_mode == 3) {
-          /* Load from selected slot */
-          int result = Drumset_LoadFromSlot(current_drumset, selected_slot);
-
-          /* Show result */
-          ST7789_FillRect(30, 90, 180, 60, BLACK);
-          ST7789_DrawThickFrame(30, 90, 180, 60, 2, WHITE);
-          if (result == 0) {
-            ST7789_WriteString(55, 102, "LOADED!", GREEN, BLACK, 2);
-            char slot_msg[20];
-            snprintf(slot_msg, sizeof(slot_msg), "Kit-%03d", selected_slot);
-            ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
-          } else {
-            ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
-            ST7789_WriteString(40, 122, "Load failed", YELLOW, BLACK, 1);
-          }
-
-          for (volatile int i = 0; i < 10000000; i++)
-            ;
-
-          /* Exit menu */
+          Drumset_LoadFromSlot(current_drumset, selected_slot);
+          /* Exit menu or stay for feedback? Let's just exit for timing safety
+           */
           ExitDrumsetMenu();
         }
       } else if (button_id == BUTTON_DRUMSET) {
@@ -1136,8 +1105,24 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         needs_ui_refresh = 1;
       }
     } else if (button_id == BUTTON_ENCODER) {
-      if (is_pattern_edit_mode)
+      if (is_pattern_edit_mode) {
+        if (!is_pattern_detail_mode) {
+          is_pattern_detail_mode = 1;
+          pattern_cursor = 0;
+          Encoder_SetLimits(0, 31);
+          Encoder_SetValue(0);
+          full_redraw_needed =
+              1; /* Step grid is totally different, must clear */
+          mode_changed = 1;
+        } else {
+          is_pattern_detail_mode = 0;
+          Encoder_SetLimits(0, NUM_CHANNELS - 1);
+          Encoder_SetValue(selected_channel);
+          full_redraw_needed = 1; /* Returning to 3x2 grid, must clear */
+          mode_changed = 1;
+        }
         return;
+      }
 
       if (is_channel_edit_mode == 1) {
         /* MENU SELECTION */
@@ -1286,7 +1271,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         is_channel_edit_mode = 1; /* Go to Menu */
         Encoder_SetLimits(0, 2);  /* 3 Menu Items */
         Encoder_SetValue(0);      /* Reset to Sample Item */
-        DrawChannelEditScreen(1); /* Full redraw needed */
+        mode_changed = 1;
+        full_redraw_needed = 1;
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
@@ -1316,6 +1302,10 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             UpdateBlinker(selected_channel,
                           1); /* Ensure selection is visible */
           } else {
+            if (is_pattern_detail_mode) {
+              full_redraw_needed = 1; /* Clears the full step grid */
+            }
+            is_pattern_detail_mode = 0;
             /* Return to previous limits */
             if (is_edit_mode) {
               Encoder_SetLimits(0, NUM_CHANNELS - 1);
@@ -1331,4 +1321,83 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   } else {
     /* Button released - Handled in main loop polling for BUTTON_DRUMSET */
   }
+}
+
+static uint16_t GetChannelColor(uint8_t channel) {
+  switch (channel) {
+  case 0:
+    return RED;
+  case 1:
+    return GREEN;
+  case 2:
+    return YELLOW;
+  case 3:
+    return MAGENTA;
+  case 4:
+    return CYAN;
+  case 5:
+    return ORANGE;
+  default:
+    return WHITE;
+  }
+}
+
+static void DrawStepEditScreen(uint8_t full_redraw) {
+  const int BOX_W = 34;
+  const int BOX_H = 36; /* Taller boxes for full screen */
+  const int GAP_X = 4;
+  const int GAP_Y = 6;
+  const int START_X = 12;
+  const int START_Y = 50;
+
+  static int last_cursor = -1;
+
+  uint16_t ch_color = GetChannelColor(selected_channel);
+  uint16_t bg_box_color = 0x2104;
+
+  if (full_redraw) {
+    ST7789_Fill(BLACK);
+
+    /* Dedicated Header */
+    char tit_buf[48];
+    snprintf(tit_buf, sizeof(tit_buf), "STEP EDIT: CH %d",
+             selected_channel + 1);
+    ST7789_WriteString(10, 10, tit_buf, CYAN, BLACK, 2);
+
+    /* Sample Name below title */
+    ST7789_WriteString(10, 32, current_drumset->sample_names[selected_channel],
+                       ch_color, BLACK, 1);
+
+    last_cursor = -1;
+  }
+
+  /* Draw 32 steps (4x8 grid) */
+  for (int i = 0; i < 32; i++) {
+    int row = i / 8;
+    int col = i % 8;
+    int x = START_X + col * (BOX_W + GAP_X);
+    int y = START_Y + row * (BOX_H + GAP_Y);
+
+    uint8_t velocity = Sequencer_GetStep(selected_channel, i);
+    uint16_t step_color = (velocity > 0) ? ch_color : bg_box_color;
+
+    /* Incremental update: Redraw only if full_redraw, or if cursor is/was here
+     */
+    if (full_redraw || i == pattern_cursor || i == last_cursor) {
+      if (i == pattern_cursor) {
+        /* Selected Step: Highlighted */
+        ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
+      } else {
+        /* Regular Step: Simple colored box */
+        ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
+        /* If it was the last cursor, we need to clear its white frame */
+        if (i == last_cursor) {
+          ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, BLACK);
+        }
+      }
+    }
+  }
+
+  last_cursor = pattern_cursor;
 }

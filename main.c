@@ -576,16 +576,10 @@ int main(void) {
     strcpy(drumset.name, "KIT-001");
   }
 
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    AudioMixer_SetSample(i, drumset.samples[i], drumset.lengths[i]);
-  }
-
-  /* FORCE SYNC: Explicitly apply Volume and Pan to Mixer after loading samples
+  /* Note: Drumset_LoadFromSlot handles AudioMixer_SetSample/Vol/Pan internally.
+   * No further manual assignment is needed here, matching the manual load
+   * logic.
    */
-  for (int i = 0; i < NUM_CHANNELS; i++) {
-    AudioMixer_SetVolume(i, drumset.volumes[i]);
-    AudioMixer_SetPan(i, drumset.pans[i]);
-  }
 
   /* Start audio subsystem as early as possible for PLLI2S stability */
   int audio_status = I2S_Init();

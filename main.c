@@ -189,7 +189,7 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
   if (full_redraw) {
     ST7789_Fill(BLACK);
     char buf[32];
-    snprintf(buf, sizeof(buf), "CH %d EDIT", selected_channel);
+    snprintf(buf, sizeof(buf), "CH %d EDIT", selected_channel + 1);
     ST7789_WriteString(10, 10, buf, YELLOW, BLACK, 2);
   }
 
@@ -657,32 +657,37 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_FillRect(10, 40, 90, 80, BLACK);
   ST7789_DrawThickFrame(10, 40, 90, 80, 2, RED);
   ST7789_WriteString(15, 50, drumset->sample_names[0], RED, BLACK, 1);
+  ST7789_WriteString(85, 105, "1", RED, BLACK, 1); /* Channel number */
 
   /* Channel 1: Green */
   ST7789_FillRect(110, 40, 90, 80, BLACK);
   ST7789_DrawThickFrame(110, 40, 90, 80, 2, GREEN);
   ST7789_WriteString(115, 50, drumset->sample_names[1], GREEN, BLACK, 1);
+  ST7789_WriteString(185, 105, "2", GREEN, BLACK, 1); /* Channel number */
 
   /* Channel 2: Yellow */
   ST7789_FillRect(210, 40, 90, 80, BLACK);
   ST7789_DrawThickFrame(210, 40, 90, 80, 2, YELLOW);
   ST7789_WriteString(215, 50, drumset->sample_names[2], YELLOW, BLACK, 1);
+  ST7789_WriteString(285, 105, "3", YELLOW, BLACK, 1); /* Channel number */
 
   /* Channel 3: Magenta */
   ST7789_FillRect(10, 130, 90, 80, BLACK);
   ST7789_DrawThickFrame(10, 130, 90, 80, 2, MAGENTA);
   ST7789_WriteString(15, 140, drumset->sample_names[3], MAGENTA, BLACK, 1);
+  ST7789_WriteString(85, 195, "4", MAGENTA, BLACK, 1); /* Channel number */
 
   /* Channel 4: Cyan */
   ST7789_FillRect(110, 130, 90, 80, BLACK);
   ST7789_DrawThickFrame(110, 130, 90, 80, 2, CYAN);
   ST7789_WriteString(115, 140, drumset->sample_names[4], CYAN, BLACK, 1);
+  ST7789_WriteString(185, 195, "5", CYAN, BLACK, 1); /* Channel number */
 
   /* Channel 5: Orange */
   ST7789_FillRect(210, 130, 90, 80, BLACK);
   ST7789_DrawThickFrame(210, 130, 90, 80, 2, ORANGE);
   ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
-  ST7789_WriteString(215, 140, drumset->sample_names[5], ORANGE, BLACK, 1);
+  ST7789_WriteString(285, 195, "6", ORANGE, BLACK, 1); /* Channel number */
 
   /* Highlight selected channel if in edit mode */
   if (is_edit_mode) {

@@ -100,12 +100,14 @@ void Encoder_ToggleIncrement(void) {
   }
 }
 
+void Encoder_ResetIncrement(void) { increment_step = 1; }
+
 /**
  * @brief Handle rotation logic (called from EXTI ISR in buttons.c)
  */
 void Encoder_HandleRotation(void) {
-  /* Small delay for debouncing */
-  delay_us(100);
+  /* Reduced delay for debouncing to improve responsiveness/stability */
+  delay_us(10);
 
   /* Read current state */
   uint8_t a = (GPIOB_IDR >> ENC_A_PIN) & 1;

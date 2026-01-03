@@ -500,6 +500,7 @@ static void TriggerChannelEdit(void) {
   last_menu_index = 0;
   Encoder_SetLimits(0, 2); /* 3 Menu Items */
   Encoder_SetValue(0);
+  Encoder_ResetIncrement();
   mode_changed = 1;
   full_redraw_needed = 1;
 }
@@ -535,6 +536,7 @@ static void ToggleEditMode(void) {
     saved_bpm = Encoder_GetValue();
     Encoder_SetLimits(0, NUM_CHANNELS - 1);
     Encoder_SetValue(selected_channel);
+    Encoder_ResetIncrement();
   } else {
     selected_channel = Encoder_GetValue();
     Encoder_SetLimits(40, 300);
@@ -1145,6 +1147,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           pattern_cursor = 0;
           Encoder_SetLimits(0, 31);
           Encoder_SetValue(0);
+          Encoder_ResetIncrement();
           full_redraw_needed =
               1; /* Step grid is totally different, must clear */
           mode_changed = 1;
@@ -1336,6 +1339,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             }
             Encoder_SetLimits(0, NUM_CHANNELS - 1);
             Encoder_SetValue(selected_channel);
+            Encoder_ResetIncrement();
             UpdateBlinker(selected_channel,
                           1); /* Ensure selection is visible */
           } else {

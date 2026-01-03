@@ -48,4 +48,9 @@ void Encoder_HandleRotation(void);
  */
 void Encoder_ToggleIncrement(void);
 
+/**
+ * @brief Reset increment step to 1x
+ */
+void Encoder_ResetIncrement(void);
+
 #endif

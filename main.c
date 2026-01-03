@@ -401,7 +401,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
     }
   } else if (is_drumset_menu_mode == 2) {
     /* Save Slots */
-    ST7789_WriteString(10, 10, "SAVE TO SLOT", YELLOW, BLACK, 2);
+    ST7789_WriteString(10, 10, "SAVE KIT", YELLOW, BLACK, 2);
 
     /* Display 8 slots in a stable window (starts at start_slot) */
     int start_slot = ((selected_slot - 1) / 8) * 8 + 1;
@@ -424,7 +424,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
         }
 
         /* 16 chars max to avoid wrapping at x=40 (40 + 16*12 = 232 < 240) */
-        snprintf(slot_text, sizeof(slot_text), "Slot %03d %s  ", slot_num,
+        snprintf(slot_text, sizeof(slot_text), "Kit-%03d %s  ", slot_num,
                  is_occupied ? "[X]" : "   ");
 
         uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
@@ -439,7 +439,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
     }
   } else if (is_drumset_menu_mode == 3) {
     /* Load Slots - only show occupied */
-    ST7789_WriteString(10, 10, "LOAD FROM SLOT", YELLOW, BLACK, 2);
+    ST7789_WriteString(10, 10, "LOAD KIT", YELLOW, BLACK, 2);
 
     if (occupied_slot_count == 0) {
       ST7789_WriteString(40, 100, "NO SAVED KITS", GRAY, BLACK, 2);
@@ -465,7 +465,7 @@ static void DrawDrumsetMenu(uint8_t full_redraw) {
           uint8_t slot_num = occupied_slots[idx];
           char slot_text[20];
           /* 16 chars max */
-          snprintf(slot_text, sizeof(slot_text), "Slot %03d [X]  ", slot_num);
+          snprintf(slot_text, sizeof(slot_text), "Kit-%03d [X]  ", slot_num);
 
           uint16_t color = (slot_num == selected_slot) ? WHITE : GRAY;
           ST7789_WriteString(10, y_pos, (slot_num == selected_slot) ? ">" : " ",
@@ -1039,7 +1039,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           if (result == 0) {
             ST7789_WriteString(60, 102, "SAVED!", GREEN, BLACK, 2);
             char slot_msg[20];
-            snprintf(slot_msg, sizeof(slot_msg), "Slot %03d", selected_slot);
+            snprintf(slot_msg, sizeof(slot_msg), "Kit-%03d", selected_slot);
             ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
           } else {
             ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);
@@ -1067,7 +1067,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           if (result == 0) {
             ST7789_WriteString(55, 102, "LOADED!", GREEN, BLACK, 2);
             char slot_msg[20];
-            snprintf(slot_msg, sizeof(slot_msg), "Slot %03d", selected_slot);
+            snprintf(slot_msg, sizeof(slot_msg), "Kit-%03d", selected_slot);
             ST7789_WriteString(55, 122, slot_msg, WHITE, BLACK, 1);
           } else {
             ST7789_WriteString(50, 102, "ERROR!", RED, BLACK, 2);

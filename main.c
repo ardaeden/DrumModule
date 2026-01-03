@@ -1149,8 +1149,8 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               1; /* Step grid is totally different, must clear */
           mode_changed = 1;
         } else {
-          /* Toggle Step status */
-          Sequencer_ToggleStep(selected_channel, pattern_cursor);
+          /* Cycle Step velocity */
+          Sequencer_CycleStep(selected_channel, pattern_cursor);
           needs_step_update = 1; /* Trigger incremental update in main loop */
         }
         return;
@@ -1424,23 +1424,31 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
         i == current_play_step || i == last_play_step) {
 
       uint8_t velocity = Sequencer_GetStep(selected_channel, i);
-      uint16_t step_color = (velocity > 0) ? ch_color : bg_box_color;
 
-      /* Draw Base Box */
-      ST7789_FillRect(x, y, BOX_W, BOX_H, step_color);
+      /* 1. Clear Box with Background Color */
+      ST7789_FillRect(x, y, BOX_W, BOX_H, bg_box_color);
 
-      /* Selection Frames (Priority: Manual Cursor frame + Centered Playhead
-       * Dot) */
-      if (i == pattern_cursor) {
-        /* Manual Selection: White thick frame */
-        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
-      } else if (i == last_play_step || i == last_cursor) {
-        /* Clear old frames by doing nothing extra (FillRect handled it) */
+      /* 2. Draw Velocity-based Indicator */
+      if (velocity > 0) {
+        if (velocity >= 255) {
+          ST7789_FillRect(x, y, BOX_W, BOX_H, ch_color);
+        } else if (velocity >= 128) {
+          ST7789_FillRect(x + 5, y + 6, 24, 24, ch_color);
+        } else if (velocity >= 64) {
+          ST7789_FillRect(x + 9, y + 10, 16, 16, ch_color);
+        } else {
+          ST7789_FillRect(x + 13, y + 14, 8, 8, ch_color);
+        }
       }
 
+      /* 3. Draw Manual Selection Frame (White) */
+      if (i == pattern_cursor) {
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
+      }
+
+      /* 4. Draw Playhead Frame (White) if active */
       if (i == current_play_step) {
-        /* Playhead: Larger centered white square */
-        ST7789_FillRect(x + 8, y + 9, 18, 18, WHITE);
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
       }
     }
   }

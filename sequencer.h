@@ -73,6 +73,13 @@ uint8_t Sequencer_GetStep(uint8_t channel, uint8_t step);
 void Sequencer_ToggleStep(uint8_t channel, uint8_t step);
 
 /**
+ * @brief Cycle step velocity levels
+ * @param channel Channel (0-5)
+ * @param step Step (0-31)
+ */
+void Sequencer_CycleStep(uint8_t channel, uint8_t step);
+
+/**
  * @brief Set BPM
  * @param bpm Beats per minute (40-300)
  */

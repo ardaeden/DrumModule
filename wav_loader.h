@@ -36,4 +36,11 @@ int Drumset_Load(const char *kit_path, Drumset *drumset);
 int WAV_LoadSample(FAT32_FileEntry *file_entry, uint8_t channel_idx,
                    Drumset *drumset);
 
+/**
+ * @brief Unload a channel's sample
+ * @param channel Channel number (0-5)
+ * @param drumset Drumset structure
+ */
+void WAV_UnloadChannel(uint8_t channel, Drumset *drumset);
+
 #endif

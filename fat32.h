@@ -23,12 +23,19 @@ typedef struct {
 int FAT32_Init(void);
 
 /**
- * @brief Get list of files in root directory
+ * @brief Get root directory cluster number
+ * @return Root cluster number
+ */
+uint32_t FAT32_GetRootCluster(void);
+
+/**
+ * @brief Get list of files in a directory
+ * @param cluster Directory cluster (use FAT32_GetRootCluster() for root)
  * @param files Array to store file entries
  * @param max_files Maximum number of files to read
  * @return Number of files found, or -1 on error
  */
-int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files);
+int FAT32_ListDir(uint32_t cluster, FAT32_FileEntry *files, int max_files);
 
 /**
  * @brief Get first sector of a file

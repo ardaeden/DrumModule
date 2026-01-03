@@ -10,6 +10,8 @@
 #include "wav_loader.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
+#include <strings.h>
 
 /* Color definitions */
 #ifndef GRAY
@@ -128,10 +130,57 @@ static int last_selected_file_index = 0;
 static int edit_menu_index = 0; /* 0=Sample, 1=Vol, 2=Pan */
 static int last_menu_index = 0;
 static Drumset *current_drumset = NULL;
+static uint32_t current_cluster = 0; /* Current directory cluster for browser */
 
-static void ScanRootFiles(void) {
-  file_count = FAT32_ListRootFiles(file_list, FAT32_MAX_FILES);
-  /* Filter for .WAV only? For now list all, WAV check is in loader */
+/* Helper: case-insensitive string ends with check */
+static int str_ends_with(const char *str, const char *suffix) {
+  int str_len = strlen(str);
+  int suffix_len = strlen(suffix);
+  if (suffix_len > str_len)
+    return 0;
+  return strcasecmp(str + str_len - suffix_len, suffix) == 0;
+}
+
+static void ScanDirectory(void) {
+  /* Use static buffer to avoid stack overflow (~1KB) */
+  static FAT32_FileEntry all_files[FAT32_MAX_FILES];
+  int count = FAT32_ListDir(current_cluster, all_files, FAT32_MAX_FILES);
+
+  file_count = 0;
+
+  /* Add [EMPTY] option at root level */
+  if (current_cluster == FAT32_GetRootCluster()) {
+    strcpy(file_list[file_count].name, "[EMPTY]");
+    file_list[file_count].is_dir = 0;
+    file_list[file_count].size = 0;
+    file_list[file_count].first_cluster = 0;
+    file_count++;
+  }
+
+  /* Filter pass */
+  for (int i = 0; i < count; i++) {
+    /* Skip dotfiles (hidden), but allow ".." */
+    if (all_files[i].name[0] == '.') {
+      if (strcmp(all_files[i].name, "..") != 0) {
+        continue; /* Skip "." and other hidden files */
+      }
+      /* else: it is "..", keep it */
+    }
+
+    /* Explicitly filter out TRASH folder if attributes didn't catch it */
+    if (strncmp(all_files[i].name, "TRASH-~1", 8) == 0) {
+      continue;
+    }
+
+    /* Show directories and .WAV files only */
+    if (all_files[i].is_dir || str_ends_with(all_files[i].name, ".WAV")) {
+      if (file_count < FAT32_MAX_FILES) {
+        file_list[file_count] = all_files[i];
+        file_count++;
+      }
+    }
+  }
+
   if (file_count < 0)
     file_count = 0;
 }
@@ -286,7 +335,9 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
       if (full_redraw || is_selected != was_selected ||
           (full_redraw == 0 &&
            (i == selected_file_index || i == last_selected_file_index))) {
-        uint16_t color = is_selected ? WHITE : GRAY;
+        /* Directories in yellow, files in white/gray */
+        uint16_t color =
+            file_list[i].is_dir ? YELLOW : (is_selected ? WHITE : GRAY);
         uint16_t y_pos = 40 + (i * 20);
 
         if (is_selected) {
@@ -742,7 +793,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         /* MENU SELECTION */
         if (edit_menu_index == 0) {
           /* Go to Browser */
-          ScanRootFiles();
+          if (current_cluster == 0)
+            current_cluster = FAT32_GetRootCluster();
+          ScanDirectory();
           selected_file_index = 0;
           last_selected_file_index = -1; /* Force redraw of selected item */
           Encoder_SetLimits(0, file_count > 0 ? file_count - 1 : 0);
@@ -765,32 +818,59 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           DrawChannelEditScreen(0); /* Redraw will show edit state */
         }
       } else if (is_channel_edit_mode == 2) {
-        /* Load Selected Sample */
+        /* Browser Action */
         if (file_count > 0) {
-          int res = WAV_LoadSample(&file_list[selected_file_index],
-                                   selected_channel, current_drumset);
-          if (res > 0) {
-            /* Success Popup */
-            ST7789_FillRect(50, 100, 140, 40, BLACK);
-            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-            ST7789_WriteString(75, 112, "LOADED!", GREEN, BLACK, 2);
+          FAT32_FileEntry *selected = &file_list[selected_file_index];
 
-            for (volatile int i = 0; i < 2000000; i++)
-              ;
-            /* Return to Menu */
-            is_channel_edit_mode = 1;
-            Encoder_SetLimits(0, 2);
+          if (selected->is_dir) {
+            /* Enter Directory */
+            current_cluster = selected->first_cluster;
+            if (current_cluster == 0)
+              current_cluster = FAT32_GetRootCluster(); // ".." to root
+
+            ScanDirectory();
+            selected_file_index = 0;
+            last_selected_file_index = -1;
+            Encoder_SetLimits(0, file_count > 0 ? file_count - 1 : 0);
             Encoder_SetValue(0);
             DrawChannelEditScreen(1);
           } else {
-            /* Error Popup */
-            ST7789_FillRect(50, 100, 140, 40, BLACK);
-            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-            ST7789_WriteString(80, 112, "ERROR!", RED, BLACK, 2);
+            /* Check for [EMPTY] */
+            if (strcmp(selected->name, "[EMPTY]") == 0) {
+              WAV_UnloadChannel(selected_channel, current_drumset);
+              /* Return to Menu */
+              is_channel_edit_mode = 1;
+              Encoder_SetLimits(0, 2);
+              Encoder_SetValue(0);
+              DrawChannelEditScreen(1);
+            } else {
+              /* Load Selected Sample */
+              int res =
+                  WAV_LoadSample(selected, selected_channel, current_drumset);
+              if (res > 0) {
+                /* Success Popup */
+                ST7789_FillRect(50, 100, 140, 40, BLACK);
+                ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+                ST7789_WriteString(75, 112, "LOADED!", GREEN, BLACK, 2);
 
-            for (volatile int i = 0; i < 2000000; i++)
-              ;
-            DrawChannelEditScreen(1);
+                for (volatile int i = 0; i < 2000000; i++)
+                  ;
+                /* Return to Menu */
+                is_channel_edit_mode = 1;
+                Encoder_SetLimits(0, 2);
+                Encoder_SetValue(0);
+                DrawChannelEditScreen(1);
+              } else {
+                /* Error Popup */
+                ST7789_FillRect(50, 100, 140, 40, BLACK);
+                ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+                ST7789_WriteString(80, 112, "ERROR!", RED, BLACK, 2);
+
+                for (volatile int i = 0; i < 2000000; i++)
+                  ;
+                DrawChannelEditScreen(1);
+              }
+            }
           }
         }
       } else if (is_channel_edit_mode == 3 || is_channel_edit_mode == 4) {

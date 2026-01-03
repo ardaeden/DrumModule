@@ -127,7 +127,8 @@ int Drumset_Load(const char *kit_path, Drumset *drumset) {
 
   /* Scan root directory */
   FAT32_FileEntry dir_files[FAT32_MAX_FILES];
-  int file_count = FAT32_ListRootFiles(dir_files, FAT32_MAX_FILES);
+  int file_count =
+      FAT32_ListDir(FAT32_GetRootCluster(), dir_files, FAT32_MAX_FILES);
   if (file_count < 0)
     file_count = 0;
 
@@ -249,4 +250,21 @@ int WAV_LoadSample(FAT32_FileEntry *file_entry, uint8_t channel_idx,
   }
 
   return samples_loaded;
+}
+
+void WAV_UnloadChannel(uint8_t channel, Drumset *drumset) {
+  if (channel >= NUM_CHANNELS)
+    return;
+
+  /* Clear sample buffer */
+  drumset->lengths[channel] = 0;
+  for (uint32_t i = 0; i < 1000; i++) {
+    sample_buffers[channel][i] = 0;
+  }
+
+  /* Set name to EMPTY */
+  strncpy(drumset->sample_names[channel], "EMPTY",
+          sizeof(drumset->sample_names[channel]) - 1);
+  drumset->sample_names[channel][sizeof(drumset->sample_names[channel]) - 1] =
+      '\0';
 }

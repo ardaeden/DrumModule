@@ -126,9 +126,11 @@ static void copy_filename(char *dest, uint8_t *src) {
   dest[j] = '\0';
 }
 
-int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files) {
+uint32_t FAT32_GetRootCluster(void) { return root_cluster; }
+
+int FAT32_ListDir(uint32_t cluster, FAT32_FileEntry *files, int max_files) {
   int file_count = 0;
-  uint32_t sector = cluster_to_sector(root_cluster);
+  uint32_t sector = cluster_to_sector(cluster);
 
   /* Read root directory sectors */
   for (int sec = 0; sec < sectors_per_cluster && file_count < max_files;
@@ -154,11 +156,11 @@ int FAT32_ListRootFiles(FAT32_FileEntry *files, int max_files) {
 
       uint8_t attr = dir_entry[DIR_ATTR];
 
-      /* Skip long filename entries, volume labels, and system files */
+      /* Skip long filename entries, volume labels, hidden, and system files */
       if ((attr & ATTR_LONG_NAME) == ATTR_LONG_NAME) {
         continue;
       }
-      if (attr & ATTR_VOLUME_ID) {
+      if (attr & (ATTR_VOLUME_ID | ATTR_HIDDEN | ATTR_SYSTEM)) {
         continue;
       }
 

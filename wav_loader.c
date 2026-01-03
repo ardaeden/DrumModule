@@ -1,4 +1,5 @@
 #include "wav_loader.h"
+#include "audio_mixer.h"
 #include "fat32.h"
 #include "sdcard.h"
 #include <stdio.h>
@@ -261,6 +262,10 @@ void WAV_UnloadChannel(uint8_t channel, Drumset *drumset) {
   for (uint32_t i = 0; i < 1000; i++) {
     sample_buffers[channel][i] = 0;
   }
+
+  /* Update audio mixer to stop playing this channel */
+  drumset->samples[channel] = sample_buffers[channel];
+  AudioMixer_SetSample(channel, sample_buffers[channel], 0);
 
   /* Set name to EMPTY */
   strncpy(drumset->sample_names[channel], "EMPTY",

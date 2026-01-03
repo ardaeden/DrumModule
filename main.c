@@ -889,7 +889,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         Encoder_ToggleIncrement();
       }
     } else if (button_id == BUTTON_EDIT) {
-      if (is_channel_edit_mode) {
+      if (is_channel_edit_mode == 2) {
+        /* Back from Browser -> Menu */
+        is_channel_edit_mode = 1; /* Go to Menu */
+        Encoder_SetLimits(0, 2);  /* 3 Menu Items */
+        Encoder_SetValue(0);      /* Reset to Sample Item */
+        DrawChannelEditScreen(1); /* Full redraw needed */
+      } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
         ToggleEditMode();

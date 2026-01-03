@@ -959,7 +959,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             ST7789_WriteString(50, 122, err_msg, YELLOW, BLACK, 1);
           }
 
-          for (volatile int i = 0; i < 2000000; i++)
+          for (volatile int i = 0; i < 10000000; i++)
             ;
 
           /* Return to main menu with status update */
@@ -985,7 +985,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             ST7789_WriteString(40, 122, "Load failed", YELLOW, BLACK, 1);
           }
 
-          for (volatile int i = 0; i < 2000000; i++)
+          for (volatile int i = 0; i < 10000000; i++)
             ;
 
           /* Exit menu */

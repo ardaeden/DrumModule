@@ -129,6 +129,7 @@ static void UpdateModeUI(void);
 static void UpdateBlinker(uint8_t channel, uint8_t active);
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed);
 static void DrawStepEditScreen(uint8_t full_redraw);
+static void ShowPopup(const char *msg, uint16_t color, uint8_t exit_type);
 
 /* Global state for display and control */
 static volatile uint8_t is_playing = 0;
@@ -147,8 +148,9 @@ static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t full_redraw_needed = 0;
 static volatile uint8_t needs_step_update = 0;
-static volatile uint8_t is_ui_error = 0;
-static uint32_t ui_error_start_time = 0;
+static volatile uint8_t is_ui_popup = 0; /* Success or Error */
+static uint32_t ui_popup_start_time = 0;
+static uint8_t ui_popup_exit_type = 0; /* 0=None, 1=Drumset, 2=Pattern */
 
 /* Incremental UI tracking states */
 static int last_bpm = -1;
@@ -791,12 +793,21 @@ int main(void) {
       }
     }
 
-    /* Handle Async Error Popup */
-    if (is_ui_error) {
-      if (HAL_GetTick() - ui_error_start_time > 1500) {
-        is_ui_error = 0;
-        full_redraw_needed = 1; /* Restore screen */
-        mode_changed = 1;
+    /* Handle Async Popup (Success/Error) */
+    if (is_ui_popup) {
+      if (HAL_GetTick() - ui_popup_start_time > 1200) {
+        is_ui_popup = 0;
+
+        /* Handle automatic menu exit on success if requested */
+        if (ui_popup_exit_type == 1) {
+          ExitDrumsetMenu();
+        } else if (ui_popup_exit_type == 2) {
+          ExitPatternMenu();
+        } else {
+          full_redraw_needed = 1; /* Just restore screen from popup */
+          mode_changed = 1;
+        }
+        ui_popup_exit_type = 0;
       }
     }
 
@@ -1140,7 +1151,7 @@ static void DrawMainScreen(Drumset *drumset) {
   if (loaded_pattern_slot > 0) {
     char pat_buf[16];
     snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
-    ST7789_WriteString(140, 10, pat_buf, YELLOW, BLACK, 2);
+    ST7789_WriteString(170, 10, pat_buf, YELLOW, BLACK, 2);
   }
 
   /* Status indicator - Always show PLAY/STOP for clarity */
@@ -1232,7 +1243,7 @@ static void UpdateModeUI(void) {
     if (loaded_pattern_slot > 0) {
       char pat_buf[16];
       snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
-      ST7789_WriteString(140, 10, pat_buf, YELLOW, BLACK, 2);
+      ST7789_WriteString(170, 10, pat_buf, YELLOW, BLACK, 2);
     }
   }
 
@@ -1346,12 +1357,18 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           }
         } else if (is_drumset_menu_mode == 2) {
           /* SAVE Action */
-          Drumset_Save(current_drumset, selected_slot);
-          ExitDrumsetMenu();
+          if (Drumset_Save(current_drumset, selected_slot) == 0) {
+            ShowPopup("DRUMSET SAVED", GREEN, 1);
+          } else {
+            ShowPopup("ERR SAVE", RED, 0);
+          }
         } else if (is_drumset_menu_mode == 3) {
           /* LOAD Action */
-          Drumset_LoadFromSlot(current_drumset, selected_slot);
-          ExitDrumsetMenu();
+          if (Drumset_LoadFromSlot(current_drumset, selected_slot) == 0) {
+            ShowPopup("DRUMSET LOADED", GREEN, 1);
+          } else {
+            ShowPopup("ERR LOAD", RED, 0);
+          }
         }
       } else if (button_id == BUTTON_DRUMSET) {
         /* Back in drumset menu handled via state change */
@@ -1402,14 +1419,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           Pattern *pat = Sequencer_GetPattern();
           if (Pattern_Save(pat, selected_slot) == 0) {
             loaded_pattern_slot = selected_slot;
-            ExitPatternMenu();
+            ShowPopup("PATTERN SAVED", GREEN, 2);
           } else {
-            /* ERR popup */
-            ST7789_FillRect(50, 100, 140, 40, BLACK);
-            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-            ST7789_WriteString(80, 112, "ERR SAVE", RED, BLACK, 2);
-            is_ui_error = 1;
-            ui_error_start_time = HAL_GetTick();
+            ShowPopup("ERR SAVE", RED, 0);
           }
         } else if (is_pattern_menu_mode == 3) {
           /* LOAD selected pattern */
@@ -1419,14 +1431,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
               /* Synchronize Sequencer BPM */
               Sequencer_SetBPM(pat->bpm);
               loaded_pattern_slot = selected_slot;
-              ExitPatternMenu();
+              ShowPopup("PATTERN LOADED", GREEN, 2);
             } else {
-              /* ERR popup */
-              ST7789_FillRect(50, 100, 140, 40, BLACK);
-              ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-              ST7789_WriteString(80, 112, "ERR LOAD", RED, BLACK, 2);
-              is_ui_error = 1;
-              ui_error_start_time = HAL_GetTick();
+              ShowPopup("ERR LOAD", RED, 0);
             }
           }
         }
@@ -1591,12 +1598,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
                 /* Quick Preview */
                 AudioMixer_Trigger(selected_channel, 255);
               } else {
-                /* Draw Error Popup */
-                ST7789_FillRect(50, 100, 140, 40, BLACK);
-                ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-                ST7789_WriteString(80, 112, "ERROR!", RED, BLACK, 2);
-                is_ui_error = 1;
-                ui_error_start_time = HAL_GetTick();
+                ShowPopup("ERR WAV", RED, 0);
               }
             }
           }
@@ -1672,6 +1674,15 @@ static uint16_t GetChannelColor(uint8_t channel) {
   default:
     return WHITE;
   }
+}
+
+static void ShowPopup(const char *msg, uint16_t color, uint8_t exit_type) {
+  ST7789_FillRect(50, 100, 220, 40, BLACK);
+  ST7789_DrawThickFrame(50, 100, 220, 40, 2, WHITE);
+  ST7789_WriteString(80, 112, msg, color, BLACK, 2);
+  is_ui_popup = 1;
+  ui_popup_start_time = HAL_GetTick();
+  ui_popup_exit_type = exit_type;
 }
 
 static void DrawStepEditScreen(uint8_t full_redraw) {

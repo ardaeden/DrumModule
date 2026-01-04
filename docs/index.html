@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STM32 Drum Module - User Manual</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <nav>
+        <h2>Drum Module</h2>
+        <ul>
+            <li><a href="#intro">Introduction</a></li>
+            <li><a href="#hardware">Hardware Setup</a></li>
+            <li><a href="#controls">Controls & Usage</a></li>
+            <li><a href="#sdcard">SD Card Setup</a></li>
+            <li><a href="#firmware">Firmware Update</a></li>
+            <li><a href="#specs">Technical Specs</a></li>
+        </ul>
+    </nav>
+
+    <main>
+        <header>
+            <h1>User Manual</h1>
+            <p><strong>Version:</strong> Phase 7 (Deep Optimization & Real-time Playback)</p>
+        </header>
+
+        <section id="intro">
+            <h2>1. Introduction</h2>
+            <p>
+                The STM32 Drum Module is a professional-grade 6-channel, 32-step drum sequencer designed for Eurorack
+                modular synthesizers.
+                Powered by the STM32F411 "Black Pill" at 100MHz, it provides reliable audio triggering, low-latency
+                playback, and a premium flicker-free IPS display interface.
+            </p>
+        </section>
+
+        <section id="hardware">
+            <h2>2. Hardware Setup</h2>
+            <h3>Pin Connections</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pin</th>
+                        <th>Function</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>PA15</strong></td>
+                        <td>Clock Output</td>
+                        <td>24 PPQN Sync Pulse (Hardware PWM @ 3.3V)</td>
+                    </tr>
+                    <tr>
+                        <td>PA1, 2, 3, 4</td>
+                        <td>LCD Control</td>
+                        <td>CS (4), DC (2), RESET (3), Backlight (1)</td>
+                    </tr>
+                    <tr>
+                        <td>PA5, PA7</td>
+                        <td>SPI1 (LCD)</td>
+                        <td>SCK / MOSI (48MHz High Speed)</td>
+                    </tr>
+                    <tr>
+                        <td>PB6, PB7</td>
+                        <td>Rotary Encoder</td>
+                        <td>Phase A / B</td>
+                    </tr>
+                    <tr>
+                        <td>PB8</td>
+                        <td>Encoder Sw</td>
+                        <td>Push for precision tempo control</td>
+                    </tr>
+                    <tr>
+                        <td>PB10, 12, 15</td>
+                        <td>I2S2 (Audio)</td>
+                        <td>BCK, LRCK, DIN -> PCM5102A DAC</td>
+                    </tr>
+                    <tr>
+                        <td>PB3, 4, 5</td>
+                        <td>SPI3 (SD)</td>
+                        <td>SCK, MISO, MOSI -> FAT32 SD Card</td>
+                    </tr>
+                    <tr>
+                        <td>PC13</td>
+                        <td>Status LED</td>
+                        <td>Blinks to the master clock (Internal LED)</td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <section id="controls">
+            <h2>3. Controls & Usage</h2>
+
+            <h3>Transport & Playback</h3>
+            <ul>
+                <li><strong>Start / Stop:</strong> Press the dedicated START button (PA0).</li>
+                <li><strong>Tempo:</strong> Turn the encoder to adjust BPM (40 - 300).</li>
+                <li><strong>Precision BPM:</strong> Click the encoder to toggle between 1.0 and 10.0 BPM increments (BPM
+                    color changes to Magenta).</li>
+            </ul>
+
+            <h3>Navigation & Menus</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Button</th>
+                        <th>Short Press (Click)</th>
+                        <th>Long Press (Hold)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><strong>DRUMSET</strong></td>
+                        <td>Toggle <strong>Channel Edit</strong> (Volume/Pan)</td>
+                        <td>Enter <strong>Kit Save/Load</strong> Menu</td>
+                    </tr>
+                    <tr>
+                        <td><strong>PATTERN</strong></td>
+                        <td>Toggle <strong>Step Edit</strong> (The Grid)</td>
+                        <td>Enter <strong>Pattern Save/Load</strong> Menu</td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="tip">
+                <strong>Performance Mode:</strong> You can enter all menus and edit both kits and patterns **while the
+                sequencer is playing** without interrupting the audio.
+            </div>
+
+            <h3>Step Edit Mode</h3>
+            <p>Access the 32-step grid by clicking the PATTERN button.</p>
+            <ul>
+                <li><strong>Turn Encoder:</strong> Move the selection cursor across the 4x8 grid.</li>
+                <li><strong>Click Encoder:</strong> Cycle step velocity (OFF -> LOW -> MID -> HIGH -> ACCENT).</li>
+                <li><strong>Playhead:</strong> A white indicator shows real-time playback position, centered for maximum
+                    visibility.</li>
+            </ul>
+        </section>
+
+        <section id="sdcard">
+            <h2>4. SD Card Setup</h2>
+            <p>Format your card as <strong>FAT32</strong>. The module supports hot-swapping (re-initialization occurs on
+                kit/pattern load).</p>
+
+            <h3>Directory Structure</h3>
+            <pre>
+/root
+  ├── DRUMSETS/
+  │   ├── KIT-001.DRM   (Kit config: paths, volume, pan)
+  │   └── ...
+  ├── PATTERNS/
+  │   ├── PAT-001.PAT   (Binary 32-step data)
+  │   └── ...
+  └── SAMPLES/
+      ├── KICK.WAV
+      ├── ... (User samples here)</pre>
+
+            <div class="warning">
+                <strong>WAV Requirements:</strong> 44.1 kHz, 16-bit, Mono PCM.
+            </div>
+        </section>
+
+        <section id="specs">
+            <h2>5. Technical Specifications</h2>
+            <ul>
+                <li><strong>Engine:</strong> 6-Voice Stereo Mixing Engine</li>
+                <li><strong>Output:</strong> 44.1kHz / 16-bit via I2S (PCM5102A)</li>
+                <li><strong>Sequencer:</strong> 32 Steps per channel (4 bars in 4/4)</li>
+                <li><strong>Sync:</strong> 24 PPQN Hardware Clock Output (PA15)</li>
+                <li><strong>Storage:</strong> Save/Load 100 Kits and 100 Patterns</li>
+                <li><strong>UI:</strong> 320x240 IPS Color Display (Flicker-free Refresh)</li>
+            </ul>
+        </section>
+
+    </main>
+</body>
+
+</html>

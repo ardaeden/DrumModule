@@ -18,5 +18,4 @@
 # Static analysis and secondary outputs
 *.su
 
-# Documentation
-docs/
+

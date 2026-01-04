@@ -5,7 +5,7 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
 ## Features
 
 ### Audio Engine 🎧
-- **6-Channel Mixing**: Kick, Snare, Hats, Clap, Perc1, Perc2.
+- **6-Channel Mixing**: For using as Kick, Snare, Hats, Clap, Perc1, Perc2. etc.
 - **WAV Playback**: Loads samples from SD Card (FAT32).
 - **High Fidelity**: 44.1kHz stereo output via I2S (PCM5102A).
 - **Dynamic Mixing**: Per-channel volume and panning.
@@ -13,7 +13,7 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
 - **Auto-Load**: Automatically loads `KIT-001` on startup for instant playability.
 
 ### Sequencer 🎹
-- **32 Steps**: Expanded 2-bar step sequencing.
+- **32 Steps**: Expanded 4-bar step sequencing.
 - **24 PPQN Clock**: High-resolution internal clock.
 - **Hardware Sync Output**: 24 PPQN 50% duty cycle clock on **PA15**.
 - **Adjustable BPM**: 40-300 BPM via rotary encoder.
@@ -71,21 +71,56 @@ Format SD card as **FAT32**.
 ├── DRUMSETS/
 │   ├── KIT-001.DRM   (Text-based kit definition)
 │   └── ...
+├── PATTERNS/
+│   ├── PAT-001.PAT   (Binary pattern data)
+│   └── ...
 └── SAMPLES/
     ├── KICK.WAV
     ├── SNARE.WAV
-    ├── HATS.WAV
     └── ...
 ```
 *Note: Samples must be 44.1kHz, 16-bit PCM Mono.*
 
+## File Formats
+
+### Drumset (.DRM)
+The drumset files are **text-based** (ASCII) and stored in the `/DRUMSETS/` directory. Each file contains exactly 6 lines, corresponding to the 6 internal channels.
+
+**Row Format:**
+`channel_index,sample_path,volume,pan\n`
+
+| Field | Type | Range / Description |
+|-------|------|---------------------|
+| **channel_index** | Integer | `0` to `5` (Matches Hardware Channel) |
+| **sample_path** | String | Max 64 chars. Relative to SD root (e.g., `SAMPLES/KICK.WAV`) |
+| **volume** | Integer | `0` to `255` (0 = Mute, 255 = Max) |
+| **pan** | Integer | `0` to `255` (0 = Left, 128 = Center, 255 = Right) |
+
+*Example Line:* `0,SAMPLES/KICK.WAV,250,128`
+
+---
+
+### Pattern (.PAT)
+The pattern files are **binary-based** memory dumps of the `Pattern` C-struct (~211-212 bytes), stored in the `/PATTERNS/` directory.
+
+**Structure Layout (Little Endian):**
+
+| Offset | Size | Name | Description |
+|--------|------|------|-------------|
+| **0**  | 192 | `steps` | 2D Array [6][32]. Bytes store Velocity (0-255). |
+| **192**| 1   | `step_count` | Number of active steps in the loop (1-32). |
+| **193**| (1) | *padding*| Compiler alignment padding (internal use). |
+| **194**| 2   | `bpm` | Uint16 value representing current tempo. |
+| **196**| 16  | `name` | Char array containing the pattern name. |
+
+*Note: Total file size is exactly 212 bytes due to struct alignment.*
+
 ## Development Status
-✅ **Phase 5 Complete**:
-- [x] **Full Save/Load System**: 100 Slots (KIT-001.DRM).
-- [x] **Robust Boot Sequence**: Auto-load mixer sync fixed.
-- [x] **UI Polish**: "Kit" terminology, flicker-free rendering, playback guards.
-- [x] **Code Cleanup**: Removed legacy test patterns and dead code.
-- [x] **Performance**: Optimized directory scanning and display updates.
+✅ **Phase 6 Complete**:
+- [x] **Pattern Management**: Save/Load up to 100 patterns (PAT-001.PAT).
+- [x] **Sync Output**: 24 PPQN clock output on PA15 for external gear.
+- [x] **UI Refinement**: Fixed Pattern Menu Save/Load glitch and background redraw overlaps.
+- [x] **Stability**: Improved directory scanning and error handling for missing files.
 
 ## Credits
 
@@ -93,4 +128,4 @@ Format SD card as **FAT32**.
 **Arda Eden** - Main Designer, Project Lead.
 
 ### Implementation
-**Google Gemini 2.0 Flash (Thinking - Experimental)** - AI Coder.
+**Antigravity** - AI Coding Assistant (Google Deepmind).

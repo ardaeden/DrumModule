@@ -770,6 +770,8 @@ int main(void) {
   uint32_t channel_blink_times[NUM_CHANNELS] = {0}; // For sequencer blinkers
 
   while (1) {
+    Button_HandleEvents();
+
     /* Handle Mode Change */
     if (mode_changed) {
       mode_changed = 0;

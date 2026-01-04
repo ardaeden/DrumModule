@@ -70,6 +70,11 @@ int Pattern_Load(Pattern *pattern, uint8_t slot) {
 
   memcpy(pattern, sector_buffer, sizeof(Pattern));
 
+  /* Validation: step_count must be in range [1, MAX_STEPS] */
+  if (pattern->step_count == 0 || pattern->step_count > MAX_STEPS) {
+    return -2; /* Invalid pattern data */
+  }
+
   return 0;
 }
 

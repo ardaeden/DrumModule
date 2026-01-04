@@ -195,6 +195,8 @@ void EXTI9_5_IRQHandler(void) {
   }
 }
 
+static volatile uint8_t pending_callback_mask = 0;
+
 void TIM5_IRQHandler(void) {
   if (TIM5_SR & (1 << 0)) {
     TIM5_SR &= ~(1 << 0);
@@ -202,44 +204,62 @@ void TIM5_IRQHandler(void) {
 
     /* Check Start Button (PA0) */
     if (buttons_active_mask & (1 << BUTTON_START)) {
-      uint8_t val = (GPIOA_IDR & (1 << 0)) ? 1 : 0;
-      if (val == 0) {
-        if (button_callback)
-          button_callback(BUTTON_START, 1);
+      if ((GPIOA_IDR & (1 << 0)) == 0) {
+        pending_callback_mask |= (1 << BUTTON_START);
       }
       EXTI_IMR |= (1 << 0); /* Unmask */
     }
 
     /* Check Encoder Button (PB8) */
     if (buttons_active_mask & (1 << BUTTON_ENCODER)) {
-      uint8_t val = (GPIOB_IDR & (1 << 8)) ? 1 : 0;
-      if (val == 0) {
-        if (button_callback)
-          button_callback(BUTTON_ENCODER, 1);
+      if ((GPIOB_IDR & (1 << 8)) == 0) {
+        pending_callback_mask |= (1 << BUTTON_ENCODER);
       }
       EXTI_IMR |= (1 << 8); /* Unmask */
     }
 
     /* Check Edit Button (PB9) */
     if (buttons_active_mask & (1 << BUTTON_DRUMSET)) {
-      uint8_t val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
-      if (val == 0) {
-        if (button_callback)
-          button_callback(BUTTON_DRUMSET, 1);
+      if ((GPIOB_IDR & (1 << 9)) == 0) {
+        pending_callback_mask |= (1 << BUTTON_DRUMSET);
       }
       EXTI_IMR |= (1 << 9); /* Unmask */
     }
 
     /* Check Pattern Button (PB1) */
     if (buttons_active_mask & (1 << BUTTON_PATTERN)) {
-      uint8_t val = (GPIOB_IDR & (1 << 1)) ? 1 : 0;
-      if (val == 0) {
-        if (button_callback)
-          button_callback(BUTTON_PATTERN, 1);
+      if ((GPIOB_IDR & (1 << 1)) == 0) {
+        pending_callback_mask |= (1 << BUTTON_PATTERN);
       }
       EXTI_IMR |= (1 << 1); /* Unmask */
     }
 
     buttons_active_mask = 0;
+  }
+}
+
+static inline void __disable_irq(void) {
+  __asm volatile("cpsid i" : : : "memory");
+}
+static inline void __enable_irq(void) {
+  __asm volatile("cpsie i" : : : "memory");
+}
+
+void Button_HandleEvents(void) {
+  if (pending_callback_mask == 0)
+    return;
+
+  for (uint8_t i = 0; i < 4; i++) {
+    if (pending_callback_mask & (1 << i)) {
+      /* Clear flag before calling to avoid re-entry issues if callback is slow
+       */
+      __disable_irq();
+      pending_callback_mask &= ~(1 << i);
+      __enable_irq();
+
+      if (button_callback) {
+        button_callback(i, 1);
+      }
+    }
   }
 }

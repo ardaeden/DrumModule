@@ -28,4 +28,10 @@ void Button_Init(void);
  */
 void Button_SetCallback(ButtonCallback callback);
 
+/**
+ * @brief Handle pending button events
+ * @details Should be called from the main loop to process events safely
+ */
+void Button_HandleEvents(void);
+
 #endif

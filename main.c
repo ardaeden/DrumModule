@@ -173,6 +173,7 @@ static int drumset_menu_index = 0;  /* 0=Save, 1=Load, 2=Back */
 static uint8_t selected_slot = 1;   /* Current slot selection (1-100) */
 static uint8_t occupied_slots[100]; /* List of occupied slots */
 static int occupied_slot_count = 0;
+static uint8_t loaded_pattern_slot = 0; /* 0 means none or default */
 
 /* Long-press detection */
 static uint32_t button_drumset_start_time = 0;
@@ -739,7 +740,16 @@ int main(void) {
     I2S_Start();
   }
 
-  LoadTestPattern();
+  /* Attempt to load Pattern Slot 1 on boot */
+  Pattern *boot_pat = Sequencer_GetPattern();
+  if (Pattern_Load(boot_pat, 1) == 0) {
+    loaded_pattern_slot = 1;
+    Sequencer_SetBPM(boot_pat->bpm);
+    Encoder_SetValue(boot_pat->bpm);
+  } else {
+    /* Fallback to Test Pattern if no SD pattern found */
+    LoadTestPattern();
+  }
   DrawMainScreen(&drumset);
 
   int32_t last_encoder = 0;
@@ -961,7 +971,8 @@ int main(void) {
     }
 
     /* UI guards for background updates while menus are active */
-    if (!is_drumset_menu_mode && !is_channel_edit_mode) {
+    if (!is_drumset_menu_mode && !is_channel_edit_mode &&
+        !is_pattern_menu_mode) {
       /* Handle UI refresh when playback stops */
       if (needs_ui_refresh) {
         needs_ui_refresh = 0;
@@ -1125,6 +1136,13 @@ static void DrawMainScreen(Drumset *drumset) {
   snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
   ST7789_WriteString(255, 10, step_buf, WHITE, BLACK, 2);
 
+  /* Pattern Info (Center, Yellow) */
+  if (loaded_pattern_slot > 0) {
+    char pat_buf[16];
+    snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
+    ST7789_WriteString(140, 10, pat_buf, YELLOW, BLACK, 2);
+  }
+
   /* Status indicator - Always show PLAY/STOP for clarity */
   const char *status = is_playing ? "PLAYING      " : "STOPPED      ";
   uint16_t status_color = is_playing ? GREEN : RED;
@@ -1209,6 +1227,13 @@ static void UpdateModeUI(void) {
     last_is_pattern_edit = is_pattern_edit_mode;
     last_is_edit = is_edit_mode;
     last_bpm = current_bpm;
+
+    /* Re-draw Pattern Slot in case of header overwrite */
+    if (loaded_pattern_slot > 0) {
+      char pat_buf[16];
+      snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
+      ST7789_WriteString(140, 10, pat_buf, YELLOW, BLACK, 2);
+    }
   }
 
   /* Update Status Footer only on playback state change */
@@ -1376,6 +1401,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           /* SAVE current pattern */
           Pattern *pat = Sequencer_GetPattern();
           if (Pattern_Save(pat, selected_slot) == 0) {
+            loaded_pattern_slot = selected_slot;
             ExitPatternMenu();
           } else {
             /* ERR popup */
@@ -1392,6 +1418,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             if (Pattern_Load(pat, selected_slot) == 0) {
               /* Synchronize Sequencer BPM */
               Sequencer_SetBPM(pat->bpm);
+              loaded_pattern_slot = selected_slot;
               ExitPatternMenu();
             } else {
               /* ERR popup */

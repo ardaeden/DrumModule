@@ -10,7 +10,7 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
 - **High Fidelity**: 44.1kHz stereo output via I2S (PCM5102A).
 - **Dynamic Mixing**: Per-channel volume and panning.
 - **Kit System**: Save and Load up to 100 full drum kits (KIT-001 to KIT-100).
-- **Auto-Load**: Automatically loads `KIT-001` on startup for instant playability.
+- **Auto-Load**: Automatically loads `KIT-001` and `PAT-001` on startup for instant playability.
 
 ### Sequencer 🎹
 - **32 Steps**: Expanded 4-bar step sequencing.

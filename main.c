@@ -656,8 +656,6 @@ static void DrawPatternMenu(uint8_t full_redraw) {
 }
 
 static void ToggleEditMode(void) {
-  if (is_playing)
-    return;
 
   is_edit_mode = !is_edit_mode;
   if (is_edit_mode) {
@@ -824,9 +822,9 @@ int main(void) {
       }
     }
 
-    /* Long-press detection for Drumset Menu - only if not playing */
+    /* Long-press detection for Drumset Menu */
     if (button_drumset_pressed && !button_drumset_handled &&
-        !is_drumset_menu_mode && !is_playing && !is_pattern_edit_mode) {
+        !is_drumset_menu_mode && !is_pattern_edit_mode) {
       if (HAL_GetTick() - button_drumset_start_time >= 500) {
         /* Long-press (0.5s) detected */
         is_drumset_menu_mode = 1;
@@ -857,7 +855,7 @@ int main(void) {
       uint8_t current_val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
       if (current_val == 1) { /* Physcially released (Pull-up) */
         button_drumset_pressed = 0;
-        if (!button_drumset_handled && !is_drumset_menu_mode && !is_playing &&
+        if (!button_drumset_handled && !is_drumset_menu_mode &&
             !is_pattern_edit_mode) {
           /* Short press (Click) detected - toggle edit mode */
           ToggleEditMode();
@@ -991,7 +989,8 @@ int main(void) {
       needs_step_update = 0;
       if (!is_drumset_menu_mode && !is_pattern_menu_mode &&
           !full_redraw_needed) {
-        DrawStepEditScreen(0);
+        DrawStepEditScreen(
+            3); // Force redraw of current cursor cell for velocity change
       }
     }
 
@@ -1731,11 +1730,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_channel_edit_mode) {
         ExitChannelEdit();
       } else {
-        if (!is_playing) {
-          button_drumset_pressed = 1;
-          button_drumset_start_time = HAL_GetTick();
-          button_drumset_handled = 0;
-        }
+        button_drumset_pressed = 1;
+        button_drumset_start_time = HAL_GetTick();
+        button_drumset_handled = 0;
       }
     } else if (button_id == BUTTON_PATTERN) {
       if (pressed) {
@@ -1828,10 +1825,18 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
     int x = START_X + col * (BOX_W + GAP_X);
     int y = START_Y + row * (BOX_H + GAP_Y);
 
-    /* Incremental update: Redraw only if full_redraw, or if cursor/playhead
-     * is/was here */
-    if (full_redraw == 1 || full_redraw == 2 || i == pattern_cursor ||
-        i == last_cursor || i == current_play_step || i == last_play_step) {
+    /* Optimized incremental redraw condition to prevent flicker */
+    uint8_t redraw = (full_redraw == 1 || full_redraw == 2);
+    if (i == current_play_step || i == last_play_step)
+      redraw = 1;
+    if (i == pattern_cursor || i == last_cursor) {
+      /* Redraw cursor only if it moved or if we intentionally triggered an
+       * update (e.g. velocity change) */
+      if (pattern_cursor != last_cursor || full_redraw == 3)
+        redraw = 1;
+    }
+
+    if (redraw) {
 
       uint8_t velocity = Sequencer_GetStep(selected_channel, i);
 
@@ -1856,9 +1861,10 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
         ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
       }
 
-      /* 4. Draw Playhead Frame (White) if active */
+      /* 4. Draw Playhead Indicator (Centered 10x10 White Square) if active */
       if (i == current_play_step) {
-        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
+        ST7789_FillRect(x + (BOX_W / 2) - 5, y + (BOX_H / 2) - 5, 10, 10,
+                        WHITE);
       }
     }
   }

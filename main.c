@@ -1100,15 +1100,22 @@ int main(void) {
           /* Queue was just applied by sequencer rollover */
           loaded_pattern_slot = Sequencer_GetQueuedSlot();
 
-          /* Force return to main screen if somehow still in edit mode */
-          is_pattern_edit_mode = 0;
-          is_pattern_detail_mode = 0;
-          is_edit_mode = 0;
-
-          /* Flicker-free refresh: Force header update */
-          last_bpm = 0xFF;        /* Force BPM draw to refresh header locally */
-          full_redraw_needed = 1; /* Redraw main screen completely to be sure */
-          mode_changed = 1;       /* Trigger the redraw */
+          if (is_pattern_edit_mode || is_edit_mode || is_channel_edit_mode) {
+            /* Return to main screen and redraw fully */
+            is_pattern_edit_mode = 0;
+            is_pattern_detail_mode = 0;
+            is_edit_mode = 0;
+            is_channel_edit_mode = 0;
+            full_redraw_needed = 1;
+            mode_changed = 1;
+          } else {
+            /* Already on main screen: Flicker-free header update only */
+            last_bpm = 0xFF; /* Force header refresh in UpdateModeUI */
+            /* Stop blinking and show solid Pattern ID */
+            char pat_buf[16];
+            snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
+            ST7789_WriteString(170, 10, pat_buf, YELLOW, BLACK, 2);
+          }
           blink_on = 1;
         } else if (last_queued_state == 0 && current_queued_state == 1) {
           /* New pattern just queued */
@@ -1391,6 +1398,19 @@ static void UpdateBlinker(uint8_t channel, uint8_t active) {
 }
 
 static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
+  if (pressed && button_id == BUTTON_START) {
+    is_playing = !is_playing;
+    if (is_playing) {
+      Sequencer_Start();
+      GPIOC_ODR &= ~(1 << 13); /* ON */
+    } else {
+      Sequencer_Stop();
+      GPIOC_ODR |= (1 << 13); /* OFF */
+      needs_ui_refresh = 1;
+    }
+    return;
+  }
+
   /* Handle drumset menu first */
   if (is_drumset_menu_mode) {
     if (pressed) {
@@ -1538,20 +1558,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   }
 
   if (pressed) {
-    if (button_id == BUTTON_START) {
-      if (is_edit_mode || is_drumset_menu_mode || is_channel_edit_mode)
-        return;
-
-      is_playing = !is_playing;
-      if (is_playing) {
-        Sequencer_Start();
-        GPIOC_ODR &= ~(1 << 13); /* ON */
-      } else {
-        Sequencer_Stop();
-        GPIOC_ODR |= (1 << 13); /* OFF */
-        needs_ui_refresh = 1;
-      }
-    } else if (button_id == BUTTON_ENCODER) {
+    if (button_id == BUTTON_ENCODER) {
       if (is_pattern_edit_mode) {
         if (!is_pattern_detail_mode) {
           is_pattern_detail_mode = 1;

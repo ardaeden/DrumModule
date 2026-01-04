@@ -38,10 +38,4 @@ int SDCARD_ReadBlock(uint32_t block_addr, uint8_t *buffer);
  */
 int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer);
 
-/**
- * @brief Get SD card type
- * @return Card type constant
- */
-uint8_t SDCARD_GetType(void);
-
 #endif

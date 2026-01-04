@@ -29,8 +29,6 @@
 #define SPI3_DR (*(volatile uint32_t *)(SPI3_BASE + 0x0C))
 
 /* SPI Control Register Bits */
-#define SPI_CR1_CPHA (1 << 0)
-#define SPI_CR1_CPOL (1 << 1)
 #define SPI_CR1_MSTR (1 << 2)
 #define SPI_CR1_SPE (1 << 6)
 #define SPI_CR1_SSM (1 << 9)

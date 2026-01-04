@@ -32,7 +32,6 @@
   (ATTR_READ_ONLY | ATTR_HIDDEN | ATTR_SYSTEM | ATTR_VOLUME_ID)
 
 static uint8_t sector_buffer[512];
-static uint16_t bytes_per_sector;
 static uint8_t sectors_per_cluster;
 static uint32_t reserved_sectors;
 static uint32_t fat_size;
@@ -112,7 +111,6 @@ int FAT32_Init(void) {
   }
 
   /* Parse boot sector */
-  bytes_per_sector = read_u16(sector_buffer, BS_BYTES_PER_SEC);
   sectors_per_cluster = sector_buffer[BS_SEC_PER_CLUS];
   reserved_sectors = read_u16(sector_buffer, BS_RSVD_SEC_CNT);
   uint8_t num_fats = sector_buffer[BS_NUM_FATS];

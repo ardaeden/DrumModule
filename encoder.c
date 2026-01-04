@@ -42,15 +42,8 @@
 static volatile int32_t encoder_value = 0;
 static volatile int32_t encoder_min = -1000000;
 static volatile int32_t encoder_max = 1000000;
-static volatile uint8_t last_a = 0;
-static volatile uint8_t button_clicked = 0;
-static volatile uint32_t last_button_time = 0;
 static volatile int32_t increment_step = 1; /* 1 or 10 */
-static volatile uint8_t last_button_state =
-    1; /* Active low, so 1 = not pressed */
-
-/* Debounce time in milliseconds */
-#define DEBOUNCE_MS 50
+static volatile uint8_t last_a = 0;
 
 /**
  * @brief Simple delay for debouncing

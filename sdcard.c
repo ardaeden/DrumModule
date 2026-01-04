@@ -194,8 +194,6 @@ int SDCARD_ReadBlock(uint32_t block_addr, uint8_t *buffer) {
   return SDCARD_OK;
 }
 
-uint8_t SDCARD_GetType(void) { return card_type; }
-
 int SDCARD_WriteBlock(uint32_t block_addr, const uint8_t *buffer) {
   uint8_t response;
   uint16_t timeout;

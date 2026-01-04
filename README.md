@@ -19,13 +19,14 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
 - **Adjustable BPM**: 40-300 BPM via rotary encoder.
 
 ### User Interface 🖥️
-- **Display**: ST7789 320×240 IPS LCD.
+- **Display**: ST7789 320×240 IPS LCD with **flicker-free incremental redraw**.
 - **Real-time Feedback**: 
   - Dynamic Step Counter (e.g., "01/32").
+  - Precise **playhead centering** in Step Edit mode.
   - Active Step Visualizers.
   - Large Status Indicator (PLAYING/STOPPED).
-  - **Kit Info**: Currently loaded kit name displayed in footer.
-- **Safety Guards**: Playback-locked menus to prevent accidental changes during performance.
+  - **Pattern ID**: Displays the current pattern slot (`P-001`) with a blinking indicator when a change is queued.
+- **Performance Focused**: Drumset editing and management menus are accessible **during playback** for real-time kit adjustments.
 
 ## Hardware
 
@@ -92,7 +93,7 @@ The drumset files are **text-based** (ASCII) and stored in the `/DRUMSETS/` dire
 | Field | Type | Range / Description |
 |-------|------|---------------------|
 | **channel_index** | Integer | `0` to `5` (Matches Hardware Channel) |
-| **sample_path** | String | Max 64 chars. Relative to SD root (e.g., `SAMPLES/KICK.WAV`) |
+| **sample_path** | String | Max 63 chars. Relative to SD root (e.g., `SAMPLES/KICK.WAV`) |
 | **volume** | Integer | `0` to `255` (0 = Mute, 255 = Max) |
 | **pan** | Integer | `0` to `255` (0 = Left, 128 = Center, 255 = Right) |
 
@@ -116,11 +117,11 @@ The pattern files are **binary-based** memory dumps of the `Pattern` C-struct (~
 *Note: Total file size is exactly 212 bytes due to struct alignment.*
 
 ## Development Status
-✅ **Phase 6 Complete**:
-- [x] **Pattern Management**: Save/Load up to 100 patterns (PAT-001.PAT).
-- [x] **Sync Output**: 24 PPQN clock output on PA15 for external gear.
-- [x] **UI Refinement**: Fixed Pattern Menu Save/Load glitch and background redraw overlaps.
-- [x] **Stability**: Improved directory scanning and error handling for missing files.
+✅ **Phase 7 Complete**:
+- [x] **Deep Code Cleanup**: Removed dead code, unused variables, and standardized global state tracking.
+- [x] **UI Performance**: Flicker-free incremental redraws and improved playhead centering.
+- [x] **Real-time Editing**: Unlocked Drumset/Kit management during live playback.
+- [x] **Aesthetics**: Standardized color palette (Gray, Dark Blue, Cyan, etc.) for a premium UI feel.
 
 ## Credits
 

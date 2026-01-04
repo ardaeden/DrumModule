@@ -952,10 +952,12 @@ int main(void) {
       }
     }
 
-    /* Handle Step Toggling from Button Event */
+    /* Handle Step Toggling from Button Event - GUARD: but not while in menu */
     if (needs_step_update) {
       needs_step_update = 0;
-      DrawStepEditScreen(0);
+      if (!is_drumset_menu_mode && !is_pattern_menu_mode) {
+        DrawStepEditScreen(0);
+      }
     }
 
     /* UI guards for background updates while menus are active */
@@ -1026,7 +1028,8 @@ int main(void) {
           }
 
           /* Update Step Edit screen playhead if active AND not in menu */
-          if (is_pattern_detail_mode && !is_pattern_menu_mode) {
+          if (is_pattern_detail_mode && !is_pattern_menu_mode &&
+              !is_drumset_menu_mode) {
             DrawStepEditScreen(0);
           }
 
@@ -1343,6 +1346,80 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
     return; /* Don't process other buttons while in drumset menu */
   }
 
+  /* Handle pattern menu - New priority position */
+  if (is_pattern_menu_mode) {
+    if (pressed) {
+      if (button_id == BUTTON_ENCODER) {
+        if (is_pattern_menu_mode == 1) {
+          /* Handle Pattern Menu Selection */
+          if (pattern_menu_index == 0) { /* LOAD */
+            is_pattern_menu_mode = 3;
+            occupied_slot_count = Pattern_GetOccupiedSlots(occupied_slots, 100);
+            if (occupied_slot_count > 0) {
+              selected_slot = occupied_slots[0];
+              Encoder_SetLimits(0, occupied_slot_count - 1);
+              Encoder_SetValue(0);
+            }
+            full_redraw_needed = 1;
+          } else if (pattern_menu_index == 1) { /* SAVE */
+            is_pattern_menu_mode = 2;
+            selected_slot = 1;
+            Encoder_SetLimits(1, 100);
+            Encoder_SetValue(1);
+            occupied_slot_count = Pattern_GetOccupiedSlots(occupied_slots, 100);
+            full_redraw_needed = 1;
+          } else { /* BACK */
+            ExitPatternMenu();
+          }
+          mode_changed = 1;
+        } else if (is_pattern_menu_mode == 2) {
+          /* SAVE current pattern */
+          Pattern *pat = Sequencer_GetPattern();
+          if (Pattern_Save(pat, selected_slot) == 0) {
+            ExitPatternMenu();
+          } else {
+            /* ERR popup */
+            ST7789_FillRect(50, 100, 140, 40, BLACK);
+            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+            ST7789_WriteString(80, 112, "ERR SAVE", RED, BLACK, 2);
+            is_ui_error = 1;
+            ui_error_start_time = HAL_GetTick();
+          }
+        } else if (is_pattern_menu_mode == 3) {
+          /* LOAD selected pattern */
+          if (occupied_slot_count > 0) {
+            Pattern *pat = Sequencer_GetPattern();
+            if (Pattern_Load(pat, selected_slot) == 0) {
+              /* Synchronize Sequencer BPM */
+              Sequencer_SetBPM(pat->bpm);
+              ExitPatternMenu();
+            } else {
+              /* ERR popup */
+              ST7789_FillRect(50, 100, 140, 40, BLACK);
+              ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
+              ST7789_WriteString(80, 112, "ERR LOAD", RED, BLACK, 2);
+              is_ui_error = 1;
+              ui_error_start_time = HAL_GetTick();
+            }
+          }
+        }
+      } else if (button_id == BUTTON_PATTERN) {
+        if (is_pattern_menu_mode == 1) {
+          ExitPatternMenu();
+        } else {
+          /* Go back to main pattern menu */
+          is_pattern_menu_mode = 1;
+          pattern_menu_index = 0;
+          Encoder_SetLimits(0, 2);
+          Encoder_SetValue(0);
+          mode_changed = 1;
+          full_redraw_needed = 1;
+        }
+      }
+    }
+    return;
+  }
+
   if (pressed) {
     if (button_id == BUTTON_START) {
       if (is_edit_mode || is_drumset_menu_mode || is_channel_edit_mode)
@@ -1507,58 +1584,6 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
       } else if (is_edit_mode) {
         /* Enter Channel Edit */
         TriggerChannelEdit();
-      } else if (is_pattern_menu_mode == 1) {
-        /* Handle Pattern Menu Selection */
-        if (pattern_menu_index == 0) { /* LOAD */
-          is_pattern_menu_mode = 3;
-          occupied_slot_count = Pattern_GetOccupiedSlots(occupied_slots, 100);
-          if (occupied_slot_count > 0) {
-            selected_slot = occupied_slots[0];
-            Encoder_SetLimits(0, occupied_slot_count - 1);
-            Encoder_SetValue(0);
-          }
-          full_redraw_needed = 1;
-        } else if (pattern_menu_index == 1) { /* SAVE */
-          is_pattern_menu_mode = 2;
-          selected_slot = 1;
-          Encoder_SetLimits(1, 100);
-          Encoder_SetValue(1);
-          occupied_slot_count = Pattern_GetOccupiedSlots(occupied_slots, 100);
-          full_redraw_needed = 1;
-        } else { /* BACK */
-          ExitPatternMenu();
-        }
-        mode_changed = 1;
-      } else if (is_pattern_menu_mode == 2) {
-        /* SAVE current pattern */
-        Pattern *pat = Sequencer_GetPattern();
-        if (Pattern_Save(pat, selected_slot) == 0) {
-          ExitPatternMenu();
-        } else {
-          /* ERR popup */
-          ST7789_FillRect(50, 100, 140, 40, BLACK);
-          ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-          ST7789_WriteString(80, 112, "ERR SAVE", RED, BLACK, 2);
-          is_ui_error = 1;
-          ui_error_start_time = HAL_GetTick();
-        }
-      } else if (is_pattern_menu_mode == 3) {
-        /* LOAD selected pattern */
-        if (occupied_slot_count > 0) {
-          Pattern *pat = Sequencer_GetPattern();
-          if (Pattern_Load(pat, selected_slot) == 0) {
-            /* Synchronize Sequencer BPM */
-            Sequencer_SetBPM(pat->bpm);
-            ExitPatternMenu();
-          } else {
-            /* ERR popup */
-            ST7789_FillRect(50, 100, 140, 40, BLACK);
-            ST7789_DrawThickFrame(50, 100, 140, 40, 2, WHITE);
-            ST7789_WriteString(80, 112, "ERR LOAD", RED, BLACK, 2);
-            is_ui_error = 1;
-            ui_error_start_time = HAL_GetTick();
-          }
-        }
       } else {
         Encoder_ToggleIncrement();
       }
@@ -1652,6 +1677,10 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
 
     last_cursor = -1;
     last_play_step = -1;
+  } else {
+    /* Incremental update guard: Don't draw if menu is active */
+    if (is_pattern_menu_mode || is_drumset_menu_mode)
+      return;
   }
 
   /* Draw 32 steps (4x8 grid) */

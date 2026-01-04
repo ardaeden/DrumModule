@@ -1775,7 +1775,7 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
   uint16_t bg_box_color = 0x2104;
   uint8_t current_play_step = is_playing ? Sequencer_GetCurrentStep() : 0xFF;
 
-  if (full_redraw) {
+  if (full_redraw == 1) {
     ST7789_Fill(BLACK);
 
     /* Dedicated Header */
@@ -1792,13 +1792,12 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
     last_play_step = -1;
   } else {
     /* Incremental update guard: Don't draw if menu is active */
-    /* Incremental update guard: Don't draw if menu is active */
     if (is_pattern_menu_mode || is_drumset_menu_mode || full_redraw_needed)
       return;
 
     if (full_redraw == 2) {
-      /* Mode 2: Full grid refresh without ST7789_Fill(BLACK) */
-      /* We just reset last_cursor/last_play_step to force redraw of all */
+      /* Mode 2: Full grid refresh without ST7789_Fill(BLACK) or header redraw
+       */
       last_cursor = -1;
       last_play_step = -1;
     }

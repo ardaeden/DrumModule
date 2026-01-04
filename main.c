@@ -1195,9 +1195,9 @@ static void DrawMainScreen(Drumset *drumset) {
   } else if (is_edit_mode) {
     ST7789_WriteString(10, 10, "DRUMSET EDIT ", YELLOW, BLACK, 2);
   } else {
-    ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
+    ST7789_WriteString(10, 10, "BPM: ", WHITE, BLACK, 2);
     char val_buf[16];
-    snprintf(val_buf, sizeof(val_buf), "%d", (int)Encoder_GetValue());
+    snprintf(val_buf, sizeof(val_buf), "%-9d", (int)Encoder_GetValue());
     ST7789_WriteString(60, 10, val_buf, WHITE, BLACK, 2);
   }
 
@@ -1289,9 +1289,9 @@ static void UpdateModeUI(void) {
       /* Overwrite with padded string */
       ST7789_WriteString(10, 10, "DRUMSET EDIT ", YELLOW, BLACK, 2);
     } else {
-      ST7789_WriteString(10, 10, "BPM:   ", WHITE, BLACK, 2);
+      ST7789_WriteString(10, 10, "BPM: ", WHITE, BLACK, 2);
       char val_buf[16];
-      snprintf(val_buf, sizeof(val_buf), "%d   ", current_bpm);
+      snprintf(val_buf, sizeof(val_buf), "%-9d", current_bpm);
       ST7789_WriteString(60, 10, val_buf, WHITE, BLACK, 2);
     }
     last_is_pattern_edit = is_pattern_edit_mode;

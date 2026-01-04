@@ -453,9 +453,6 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
     dir_entry[DIR_NAME + 8 + i] = ext_part[i];
   }
 
-  dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
-  write_u32(dir_entry, DIR_FILE_SIZE, size);
-
   /* Mark entry details in directory (now safe to edit dir_entry) */
   dir_entry[DIR_ATTR] = ATTR_ARCHIVE;
   write_u32(dir_entry, DIR_FILE_SIZE, size);

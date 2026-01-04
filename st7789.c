@@ -273,15 +273,6 @@ void ST7789_DrawChar(uint16_t x, uint16_t y, char c, uint16_t color,
 }
 
 /**
- * @brief Draw text string
- * @param x X coordinate
- * @param y Y coordinate
- * @param str String to draw
- * @param color Foreground color
- * @param bg Background color
- * @param size Scale factor
- */
-/**
  * @brief Draw a thick frame using Quad-Burst DMA
  * @param x Top left X
  * @param y Top left Y
@@ -308,6 +299,16 @@ void ST7789_DrawThickFrame(uint16_t x, uint16_t y, uint16_t w, uint16_t h,
   ST7789_FillRect(x + w - thickness, y + thickness, thickness,
                   h - 2 * thickness, color);
 }
+
+/**
+ * @brief Draw text string
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param str String to draw
+ * @param color Foreground color
+ * @param bg Background color
+ * @param size Scale factor
+ */
 void ST7789_WriteString(uint16_t x, uint16_t y, const char *str, uint16_t color,
                         uint16_t bg, uint8_t size) {
   while (*str) {

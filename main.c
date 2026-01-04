@@ -14,14 +14,6 @@
 #include <string.h>
 #include <strings.h>
 
-/* Color definitions */
-#ifndef GRAY
-#define GRAY 0x7BEF
-#endif
-#ifndef DARKBLUE
-#define DARKBLUE 0x0010
-#endif
-
 /* STM32F411 Register Definitions */
 #define PERIPH_BASE 0x40000000UL
 #define AHB1PERIPH_BASE (PERIPH_BASE + 0x00020000UL)
@@ -148,8 +140,6 @@ static uint8_t channel_states[NUM_CHANNELS] = {0};
 static volatile uint8_t full_redraw_needed = 0;
 static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t needs_step_update = 0;
-static volatile uint8_t needs_full_grid_update =
-    0;                                   /* For flicker-free pattern swap */
 static volatile uint8_t is_ui_popup = 0; /* Success or Error */
 static uint32_t ui_popup_start_time = 0;
 static uint8_t ui_popup_exit_type = 0; /* 0=None, 1=Drumset, 2=Pattern */
@@ -191,9 +181,6 @@ static uint8_t button_pattern_pressed = 0;
 /* Pattern Menu States: 0=Off, 1=Menu, 2=Save Slots, 3=Load Slots */
 static volatile uint8_t is_pattern_menu_mode = 0;
 static int pattern_menu_index = 0; /* 0=Save, 1=Load, 2=Back */
-
-/* Cyan Color for Pattern Menu */
-#define CYAN 0x07FF
 
 /* Helper: case-insensitive string ends with check */
 static int str_ends_with(const char *str, const char *suffix) {
@@ -659,6 +646,13 @@ static void ToggleEditMode(void) {
 
   is_edit_mode = !is_edit_mode;
   if (is_edit_mode) {
+    /* Clear any active playback highlights */
+    for (int i = 0; i < NUM_CHANNELS; i++) {
+      if (channel_states[i]) {
+        UpdateBlinker(i, 0);
+        channel_states[i] = 0;
+      }
+    }
     saved_bpm = Encoder_GetValue();
     Encoder_SetLimits(0, NUM_CHANNELS - 1);
     Encoder_SetValue(selected_channel);
@@ -1011,7 +1005,7 @@ int main(void) {
         /* Reset any active blinkers without full screen redraw */
         for (int i = 0; i < NUM_CHANNELS; i++) {
           if (channel_states[i]) {
-            if (!is_pattern_edit_mode) {
+            if (!is_pattern_edit_mode && !is_edit_mode) {
               UpdateBlinker(i, 0);
             }
             channel_states[i] = 0;
@@ -1021,12 +1015,11 @@ int main(void) {
       }
 
       /* Update status text when play state changes */
-      static uint8_t last_playing = 0xFF;
-      if (is_playing != last_playing) {
+      if (is_playing != last_is_playing) {
         const char *status = is_playing ? "PLAYING" : "STOPPED";
         uint16_t status_color = is_playing ? GREEN : RED;
         ST7789_WriteString(10, 220, status, status_color, BLACK, 2);
-        last_playing = is_playing;
+        last_is_playing = is_playing;
       }
 
       /* Update BPM if changed (from external means or sync) */
@@ -1053,7 +1046,7 @@ int main(void) {
           for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
             uint8_t velocity = Sequencer_GetStep(i, step);
             if (velocity > 0) {
-              if (!is_pattern_edit_mode) {
+              if (!is_pattern_edit_mode && !is_edit_mode) {
                 UpdateBlinker(i, 1);
               }
               channel_states[i] = 1;
@@ -1082,8 +1075,7 @@ int main(void) {
           if (channel_states[i] &&
               (HAL_GetTick() - channel_blink_times[i] > 100)) {
             /* Guard: Don't unhighlight the manual selection in Edit Mode */
-            if (!is_pattern_edit_mode &&
-                !(is_edit_mode && i == selected_channel)) {
+            if (!is_pattern_edit_mode && !is_edit_mode) {
               UpdateBlinker(i, 0);
             }
             channel_states[i] = 0;
@@ -1141,13 +1133,6 @@ int main(void) {
             /* Clear text area */
             ST7789_WriteString(170, 10, "      ", BLACK, BLACK, 2);
           }
-        }
-      }
-
-      if (needs_full_grid_update) {
-        needs_full_grid_update = 0;
-        if (is_pattern_edit_mode) {
-          DrawStepEditScreen(2); /* Flicker-free full grid refresh */
         }
       }
     }
@@ -1304,9 +1289,10 @@ static void UpdateModeUI(void) {
       /* Overwrite with padded string */
       ST7789_WriteString(10, 10, "DRUMSET EDIT ", YELLOW, BLACK, 2);
     } else {
-      char val_buf[20];
-      snprintf(val_buf, sizeof(val_buf), "BPM: %d      ", current_bpm);
-      ST7789_WriteString(10, 10, val_buf, WHITE, BLACK, 2);
+      ST7789_WriteString(10, 10, "BPM:   ", WHITE, BLACK, 2);
+      char val_buf[16];
+      snprintf(val_buf, sizeof(val_buf), "%d   ", current_bpm);
+      ST7789_WriteString(60, 10, val_buf, WHITE, BLACK, 2);
     }
     last_is_pattern_edit = is_pattern_edit_mode;
     last_is_edit = is_edit_mode;

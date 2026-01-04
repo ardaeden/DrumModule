@@ -32,9 +32,6 @@ void AudioMixer_SetSample(uint8_t channel, int16_t *sample_data,
   channels[channel].sample_length = sample_length;
   channels[channel].playback_pos = 0;
   channels[channel].active = 0;
-  // Preserve pan if already set, otherwise default to center if init cleared it
-  if (channels[channel].pan == 0 && channels[0].pan == 0)
-    channels[channel].pan = 128;
 }
 
 void AudioMixer_SetPan(uint8_t channel, uint8_t pan) {

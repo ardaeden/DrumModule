@@ -17,6 +17,8 @@
 #define WHITE 0xFFFF
 #define ORANGE 0xFD20
 #define PURPLE 0x8010
+#define GRAY 0x7BEF
+#define DARKBLUE 0x0010
 
 void ST7789_Init(void);
 void ST7789_Fill(uint16_t color);

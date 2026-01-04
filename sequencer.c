@@ -15,7 +15,6 @@ static volatile uint8_t next_pattern_ready = 0;
 static volatile uint8_t queued_slot = 0;
 
 /* Forward declaration */
-/* Forward declaration */
 static void sequencer_clock_callback(uint8_t pulse);
 static void TriggerCurrentStep(void);
 

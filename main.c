@@ -145,9 +145,11 @@ static volatile int8_t pattern_cursor = 0; /* Step cursor for detail mode */
 
 static uint32_t last_step = 0xFF;
 static uint8_t channel_states[NUM_CHANNELS] = {0};
-static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t full_redraw_needed = 0;
+static volatile uint8_t needs_ui_refresh = 0;
 static volatile uint8_t needs_step_update = 0;
+static volatile uint8_t needs_full_grid_update =
+    0;                                   /* For flicker-free pattern swap */
 static volatile uint8_t is_ui_popup = 0; /* Success or Error */
 static uint32_t ui_popup_start_time = 0;
 static uint8_t ui_popup_exit_type = 0; /* 0=None, 1=Drumset, 2=Pattern */
@@ -703,13 +705,16 @@ int main(void) {
 
   /* --- Configure Interrupt Priorities --- */
   /* DMA1 Stream 4 (Audio): IRQ 15 */
-  NVIC_IPR_BASE[15] = (0 << 4); /* Highest Priority */
+  NVIC_IPR_BASE[15] = (0 << 4); /* Highest Priority - Audio Refill */
   /* TIM2 (Sequencer Clock): IRQ 28 */
-  NVIC_IPR_BASE[28] = (0 << 4); /* Highest Priority */
+  NVIC_IPR_BASE[28] = (1 << 4); /* High Priority - Rhythmic Timing */
   /* EXTI lines (Buttons/Encoder): IRQ 6, 7, 23 */
-  NVIC_IPR_BASE[6] = (2 << 4);  /* Lower Priority */
-  NVIC_IPR_BASE[7] = (2 << 4);  /* Lower Priority */
-  NVIC_IPR_BASE[23] = (2 << 4); /* Lower Priority */
+  NVIC_IPR_BASE[6] = (3 << 4); /* Lower Priority */
+  NVIC_IPR_BASE[7] = (3 << 4); /* Lower Priority */
+  /* TIM5 (Button Debounce/OnButtonEvent): IRQ 50 */
+  NVIC_IPR_BASE[50] =
+      (3 << 4); /* Lower Priority - Heavy SD operations happen here */
+  NVIC_IPR_BASE[23] = (3 << 4); /* Lower Priority */
 
   /* SD initialization and sample auto-load (Slot 1) */
   (void)FAT32_Init();
@@ -744,14 +749,20 @@ int main(void) {
 
   /* Attempt to load Pattern Slot 1 on boot */
   Pattern *boot_pat = Sequencer_GetPattern();
+  uint16_t default_bpm = 120;
   if (Pattern_Load(boot_pat, 1) == 0) {
     loaded_pattern_slot = 1;
-    Sequencer_SetBPM(boot_pat->bpm);
-    Encoder_SetValue(boot_pat->bpm);
+    /* Force default 120 BPM regardless of file content */
+    boot_pat->bpm = default_bpm;
+    Sequencer_SetBPM(default_bpm);
   } else {
     /* Fallback to Test Pattern if no SD pattern found */
     LoadTestPattern();
+    Sequencer_SetBPM(default_bpm);
   }
+
+  /* Ensure Encoder matches the default 120 */
+  Encoder_SetValue(default_bpm);
   DrawMainScreen(&drumset);
 
   int32_t last_encoder = 0;
@@ -976,14 +987,15 @@ int main(void) {
     /* Handle Step Toggling from Button Event - GUARD: but not while in menu */
     if (needs_step_update) {
       needs_step_update = 0;
-      if (!is_drumset_menu_mode && !is_pattern_menu_mode) {
+      if (!is_drumset_menu_mode && !is_pattern_menu_mode &&
+          !full_redraw_needed) {
         DrawStepEditScreen(0);
       }
     }
 
     /* UI guards for background updates while menus are active */
     if (!is_drumset_menu_mode && !is_channel_edit_mode &&
-        !is_pattern_menu_mode) {
+        !is_pattern_menu_mode && !full_redraw_needed) {
       /* Handle UI refresh when playback stops */
       if (needs_ui_refresh) {
         needs_ui_refresh = 0;
@@ -1077,6 +1089,59 @@ int main(void) {
           }
         }
       }
+      /* Handle Queued Pattern UI and detection */
+      static uint8_t last_queued_state = 0;
+      static uint8_t blink_on = 1;
+      static uint32_t last_blink_time = 0;
+      uint8_t current_queued_state = Sequencer_IsPatternQueued();
+
+      if (current_queued_state != last_queued_state) {
+        if (last_queued_state == 1 && current_queued_state == 0) {
+          /* Queue was just applied by sequencer rollover */
+          loaded_pattern_slot = Sequencer_GetQueuedSlot();
+
+          /* Force return to main screen if somehow still in edit mode */
+          is_pattern_edit_mode = 0;
+          is_pattern_detail_mode = 0;
+          is_edit_mode = 0;
+
+          /* Flicker-free refresh: Force header update */
+          last_bpm = 0xFF;        /* Force BPM draw to refresh header locally */
+          full_redraw_needed = 1; /* Redraw main screen completely to be sure */
+          mode_changed = 1;       /* Trigger the redraw */
+          blink_on = 1;
+        } else if (last_queued_state == 0 && current_queued_state == 1) {
+          /* New pattern just queued */
+          blink_on = 1;
+          last_blink_time = HAL_GetTick();
+        }
+        last_queued_state = current_queued_state;
+      }
+
+      if (current_queued_state) {
+        /* Blink Pattern ID - Twice as fast (125ms) */
+        if (HAL_GetTick() - last_blink_time > 125) {
+          blink_on = !blink_on;
+          last_blink_time = HAL_GetTick();
+
+          char pat_buf[16];
+          snprintf(pat_buf, sizeof(pat_buf), "P-%03d",
+                   Sequencer_GetQueuedSlot());
+          if (blink_on) {
+            ST7789_WriteString(170, 10, pat_buf, YELLOW, BLACK, 2);
+          } else {
+            /* Clear text area */
+            ST7789_WriteString(170, 10, "      ", BLACK, BLACK, 2);
+          }
+        }
+      }
+
+      if (needs_full_grid_update) {
+        needs_full_grid_update = 0;
+        if (is_pattern_edit_mode) {
+          DrawStepEditScreen(2); /* Flicker-free full grid refresh */
+        }
+      }
     }
 
     __asm volatile("wfi");
@@ -1133,9 +1198,9 @@ static void DrawMainScreen(Drumset *drumset) {
   ST7789_Fill(BLACK);
 
   if (is_pattern_edit_mode) {
-    ST7789_WriteString(10, 10, "PATTERN EDIT", CYAN, BLACK, 2);
+    ST7789_WriteString(10, 10, "PATTERN EDIT ", CYAN, BLACK, 2);
   } else if (is_edit_mode) {
-    ST7789_WriteString(10, 10, "DRUMSET EDIT", YELLOW, BLACK, 2);
+    ST7789_WriteString(10, 10, "DRUMSET EDIT ", YELLOW, BLACK, 2);
   } else {
     ST7789_WriteString(10, 10, "BPM:", WHITE, BLACK, 2);
     char val_buf[16];
@@ -1226,13 +1291,13 @@ static void UpdateModeUI(void) {
       is_edit_mode != last_is_edit ||
       (!is_edit_mode && !is_pattern_edit_mode && current_bpm != last_bpm)) {
     if (is_pattern_edit_mode) {
-      ST7789_WriteString(10, 10, "PATTERN EDIT      ", CYAN, BLACK, 2);
+      ST7789_WriteString(10, 10, "PATTERN EDIT ", CYAN, BLACK, 2);
     } else if (is_edit_mode) {
       /* Overwrite with padded string */
-      ST7789_WriteString(10, 10, "DRUMSET EDIT      ", YELLOW, BLACK, 2);
+      ST7789_WriteString(10, 10, "DRUMSET EDIT ", YELLOW, BLACK, 2);
     } else {
       char val_buf[20];
-      snprintf(val_buf, sizeof(val_buf), "BPM: %d        ", current_bpm);
+      snprintf(val_buf, sizeof(val_buf), "BPM: %d      ", current_bpm);
       ST7789_WriteString(10, 10, val_buf, WHITE, BLACK, 2);
     }
     last_is_pattern_edit = is_pattern_edit_mode;
@@ -1426,12 +1491,30 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         } else if (is_pattern_menu_mode == 3) {
           /* LOAD selected pattern */
           if (occupied_slot_count > 0) {
-            Pattern *pat = Sequencer_GetPattern();
-            if (Pattern_Load(pat, selected_slot) == 0) {
-              /* Synchronize Sequencer BPM */
-              Sequencer_SetBPM(pat->bpm);
-              loaded_pattern_slot = selected_slot;
-              ShowPopup("PATTERN LOADED", GREEN, 2);
+            Pattern temp_pat;
+            if (Pattern_Load(&temp_pat, selected_slot) == 0) {
+              /* Always switch to main screen on pattern load */
+              is_pattern_edit_mode = 0;
+              is_pattern_detail_mode = 0;
+              is_edit_mode = 0;
+
+              if (is_playing) {
+                /* Queue for next loop */
+                Sequencer_QueuePattern(&temp_pat, selected_slot);
+                ExitPatternMenu();
+              } else {
+                /* Load immediately */
+                Pattern *current = Sequencer_GetPattern();
+                uint16_t current_bpm = current->bpm;
+                memcpy(current, &temp_pat, sizeof(Pattern));
+                current->bpm = current_bpm; /* Restore current tempo */
+                /* Note: BPM update intentionally disabled per user request */
+                loaded_pattern_slot = selected_slot;
+                ExitPatternMenu();
+                ShowPopup("PATTERN LOADED", GREEN,
+                          0); /* Small success pop, no exit type since already
+                                 exited */
+              }
             } else {
               ShowPopup("ERR LOAD", RED, 0);
             }
@@ -1717,8 +1800,16 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
     last_play_step = -1;
   } else {
     /* Incremental update guard: Don't draw if menu is active */
-    if (is_pattern_menu_mode || is_drumset_menu_mode)
+    /* Incremental update guard: Don't draw if menu is active */
+    if (is_pattern_menu_mode || is_drumset_menu_mode || full_redraw_needed)
       return;
+
+    if (full_redraw == 2) {
+      /* Mode 2: Full grid refresh without ST7789_Fill(BLACK) */
+      /* We just reset last_cursor/last_play_step to force redraw of all */
+      last_cursor = -1;
+      last_play_step = -1;
+    }
   }
 
   /* Draw 32 steps (4x8 grid) */
@@ -1730,8 +1821,8 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
 
     /* Incremental update: Redraw only if full_redraw, or if cursor/playhead
      * is/was here */
-    if (full_redraw || i == pattern_cursor || i == last_cursor ||
-        i == current_play_step || i == last_play_step) {
+    if (full_redraw == 1 || full_redraw == 2 || i == pattern_cursor ||
+        i == last_cursor || i == current_play_step || i == last_play_step) {
 
       uint8_t velocity = Sequencer_GetStep(selected_channel, i);
 

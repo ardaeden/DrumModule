@@ -108,4 +108,23 @@ uint8_t Sequencer_GetStepCount(void);
  */
 void Sequencer_ClearPattern(void);
 
+/**
+ * @brief Queue a pattern for next loop cycle
+ * @param new_pattern Pattern to queue
+ * @param slot Slot number of the queued pattern
+ */
+void Sequencer_QueuePattern(Pattern *new_pattern, uint8_t slot);
+
+/**
+ * @brief Check if a pattern is queued to load
+ * @return 1 if queued, 0 otherwise
+ */
+uint8_t Sequencer_IsPatternQueued(void);
+
+/**
+ * @brief Get the slot number of the queued pattern
+ * @return Slot number (1-100)
+ */
+uint8_t Sequencer_GetQueuedSlot(void);
+
 #endif

@@ -9,6 +9,11 @@ static volatile uint8_t current_step = 0;
 static volatile uint8_t playing = 0;
 static volatile uint8_t pulse_count = 0;
 
+/* Double buffering for seamless pattern switching */
+static Pattern next_pattern_buffer = {0};
+static volatile uint8_t next_pattern_ready = 0;
+static volatile uint8_t queued_slot = 0;
+
 /* Forward declaration */
 /* Forward declaration */
 static void sequencer_clock_callback(uint8_t pulse);
@@ -148,9 +153,28 @@ static void sequencer_clock_callback(uint8_t pulse) {
     current_step++;
     if (current_step >= current_pattern.step_count) {
       current_step = 0;
+
+      /* Seamlessly swap pattern if one is queued */
+      if (next_pattern_ready) {
+        uint16_t current_bpm = current_pattern.bpm;
+        memcpy(&current_pattern, &next_pattern_buffer, sizeof(Pattern));
+        current_pattern.bpm = current_bpm; /* Ignore loaded BPM */
+        next_pattern_ready = 0;
+        /* Note: BPM update intentionally disabled per user request */
+      }
     }
 
     /* Trigger audio samples */
     TriggerCurrentStep();
   }
 }
+
+void Sequencer_QueuePattern(Pattern *new_pattern, uint8_t slot) {
+  memcpy(&next_pattern_buffer, new_pattern, sizeof(Pattern));
+  queued_slot = slot;
+  next_pattern_ready = 1;
+}
+
+uint8_t Sequencer_IsPatternQueued(void) { return next_pattern_ready; }
+
+uint8_t Sequencer_GetQueuedSlot(void) { return queued_slot; }

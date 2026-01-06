@@ -849,8 +849,13 @@ int main(void) {
       uint8_t current_val = (GPIOB_IDR & (1 << 9)) ? 1 : 0;
       if (current_val == 1) { /* Physcially released (Pull-up) */
         button_drumset_pressed = 0;
-        if (!button_drumset_handled && !is_drumset_menu_mode &&
-            !is_pattern_edit_mode) {
+        if (!button_drumset_handled && !is_drumset_menu_mode) {
+          if (is_pattern_edit_mode || is_pattern_detail_mode) {
+            is_pattern_edit_mode = 0;
+            is_pattern_detail_mode = 0;
+            is_edit_mode = 0; /* ToggleEditMode will set it to 1 */
+            full_redraw_needed = 1;
+          }
           /* Short press (Click) detected - toggle edit mode */
           ToggleEditMode();
         }
@@ -868,9 +873,15 @@ int main(void) {
           /* To keep it clean, handle the logic that was in OnButtonEvent but at
            * release */
 
-          /* Toggle Pattern Edit Mode - Block if in Drumset Edit or other menus
-           */
-          if (!is_drumset_menu_mode && !is_channel_edit_mode && !is_edit_mode) {
+          /* Toggle Pattern Edit Mode - Block if in Drumset Menu */
+          if (!is_drumset_menu_mode) {
+            if (is_edit_mode || is_channel_edit_mode) {
+              is_edit_mode = 0;
+              is_channel_edit_mode = 0;
+              is_pattern_edit_mode = 0; /* Toggle below will set it to 1 */
+              full_redraw_needed = 1;
+            }
+
             if (is_pattern_detail_mode) {
               /* Quick return to Grid Mode from Step Edit */
               is_pattern_detail_mode = 0;

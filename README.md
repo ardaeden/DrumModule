@@ -124,7 +124,9 @@ The pattern files are **binary-based** memory dumps of the `Pattern` C-struct (~
 - [x] **Direct Step Count Edit**: Directly adjust pattern length with high-contrast visual feedback.
 - [x] **Ghost Steps**: Advanced visualization for inactive pattern steps.
 - [x] **UX Polish**: Standardized popup durations, standardized redirection flows, and improved playhead visibility.
-- [x] **Bug Fixes**: Resolved BPM reset and focus persistence issues.
+- [x] **Bug Fixes**: 
+  - Resolved BPM reset and focus persistence issues.
+  - Fixed P-001 display on power-on boot (SD card stabilization delay).
 
 ✅ **Phase 7 Complete**:
 - [x] **Deep Code Cleanup**: Removed dead code and standardized global state.

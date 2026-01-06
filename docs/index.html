@@ -25,7 +25,7 @@
     <main>
         <header>
             <h1>User Manual</h1>
-            <p><strong>Version:</strong> Phase 7 (Deep Optimization & Real-time Playback)</p>
+            <p><strong>Version:</strong> Phase 8 (Advanced UI/UX & Interaction)</p>
         </header>
 
         <section id="intro">
@@ -36,6 +36,10 @@
                 Powered by the STM32F411 "Black Pill" at 100MHz, it provides reliable audio triggering, low-latency
                 playback, and a premium flicker-free IPS display interface.
             </p>
+            <div class="tip">
+                <strong>Phase 8 Highlights:</strong> Direct step count manipulation, high-contrast inverted focus
+                highlights, and "Ghost Step" awareness for professional pattern management.
+            </div>
         </section>
 
         <section id="hardware">
@@ -73,7 +77,7 @@
                     <tr>
                         <td>PB8</td>
                         <td>Encoder Sw</td>
-                        <td>Push for precision tempo control</td>
+                        <td>Push to edit values/Select precision tempo</td>
                     </tr>
                     <tr>
                         <td>PB10, 12, 15</td>
@@ -101,8 +105,16 @@
             <ul>
                 <li><strong>Start / Stop:</strong> Press the dedicated START button (PA0).</li>
                 <li><strong>Tempo:</strong> Turn the encoder to adjust BPM (40 - 300).</li>
-                <li><strong>Precision BPM:</strong> Click the encoder to toggle between 1.0 and 10.0 BPM increments (BPM
-                    color changes to Magenta).</li>
+                <li><strong>Precision BPM:</strong> Click the encoder (when in Main Mode) to toggle between 1.0 and 10.0
+                    BPM increments.</li>
+            </ul>
+
+            <h3>Direct Step Count Editing</h3>
+            <p>In <strong>Pattern Edit (Grid)</strong> mode, you can change the pattern length instantly:</p>
+            <ul>
+                <li><strong>Navigate:</strong> Rotate the encoder to the far left (past Channel 1).</li>
+                <li><strong>Focus:</strong> The step count (e.g., "01/32") will highlight with a <strong>Cyan background</strong>.</li>
+                <li><strong>Edit:</strong> Click the encoder button. The background turns <strong>Yellow</strong>. Rotate to change the length (1-32).</li>
             </ul>
 
             <h3>Navigation & Menus</h3>
@@ -122,8 +134,8 @@
                     </tr>
                     <tr>
                         <td><strong>PATTERN</strong></td>
-                        <td>Toggle <strong>Step Edit</strong> (The Grid)</td>
-                        <td>Enter <strong>Pattern Save/Load</strong> Menu</td>
+                        <td>Toggle <strong>Pattern Edit</strong> (Grid)</td>
+                        <td>Enter <strong>Pattern Management</strong> (Save/Load/Clear)</td>
                     </tr>
                 </tbody>
             </table>
@@ -133,13 +145,15 @@
                 sequencer is playing** without interrupting the audio.
             </div>
 
-            <h3>Step Edit Mode</h3>
-            <p>Access the 32-step grid by clicking the PATTERN button.</p>
+            <h3>Step Edit Mode (The Grid)</h3>
+            <p>Access the 32-step grid by clicking the PATTERN button while in Pattern Edit mode.</p>
             <ul>
                 <li><strong>Turn Encoder:</strong> Move the selection cursor across the 4x8 grid.</li>
                 <li><strong>Click Encoder:</strong> Cycle step velocity (OFF -> LOW -> MID -> HIGH -> ACCENT).</li>
-                <li><strong>Playhead:</strong> A white indicator shows real-time playback position, centered for maximum
-                    visibility.</li>
+                <li><strong>Playhead:</strong> A <strong>black</strong> indicator square shows real-time playback
+                    position.</li>
+                <li><strong>Ghost Steps:</strong> Steps outside the current pattern length are dimmed (black background,
+                    gray border). Existing data in these steps is preserved but rendered at 25% brightness.</li>
             </ul>
         </section>
 

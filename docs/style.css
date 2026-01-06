@@ -77,27 +77,56 @@ h3 {
 }
 
 h1 {
-    font-size: 3rem;
+    font-size: 3.5rem;
     margin-top: 0;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    background: linear-gradient(135deg, var(--primary-color), #bc85ff, var(--secondary-color), var(--primary-color));
+    background-size: 300% 300%;
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
     padding-bottom: 20px;
+    letter-spacing: -2px;
+    animation: gradientShift 8s ease infinite;
+}
+
+@keyframes gradientShift {
+    0% {
+        background-position: 0% 50%;
+    }
+
+    50% {
+        background-position: 100% 50%;
+    }
+
+    100% {
+        background-position: 0% 50%;
+    }
 }
 
 section {
-    margin-bottom: 60px;
-    background: var(--surface-color);
-    padding: 30px;
-    border-radius: 12px;
-    border: 1px solid var(--border-color);
+    margin-bottom: 40px;
+    background: rgba(22, 27, 34, 0.7);
+    backdrop-filter: blur(10px);
+    padding: 40px;
+    border-radius: 16px;
+    border: 1px solid rgba(240, 246, 252, 0.1);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+section:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.3);
+    border-color: rgba(88, 166, 255, 0.3);
 }
 
 table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     margin: 25px 0;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    overflow: hidden;
 }
 
 th,

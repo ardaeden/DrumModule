@@ -194,12 +194,13 @@ int Drumset_Save(Drumset *drumset, uint8_t slot) {
     return -1;
   }
 
-  // Find or create DRUMSETS directory
-  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  // Find or create DRUMKITS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMKITS");
   if (drumsets_cluster == 0) {
-    // DRUMSETS folder doesn't exist - for now, return error
-    // TODO: Create directory if needed
-    return -1;
+    drumsets_cluster = FAT32_CreateDir(FAT32_GetRootCluster(), "DRUMKITS");
+    if (drumsets_cluster == 0) {
+      return -1;
+    }
   }
 
   // Generate filename: KIT-XXX.DRM
@@ -252,8 +253,8 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
     return -1;
   }
 
-  // Find DRUMSETS directory
-  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  // Find DRUMKITS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMKITS");
   if (drumsets_cluster == 0) {
     return -1;
   }
@@ -448,10 +449,10 @@ int Drumset_LoadFromSlot(Drumset *drumset, uint8_t slot) {
 }
 
 int Drumset_GetOccupiedSlots(uint8_t *slots, int max_slots) {
-  // Find DRUMSETS directory
-  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMSETS");
+  // Find DRUMKITS directory
+  uint32_t drumsets_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "DRUMKITS");
   if (drumsets_cluster == 0) {
-    return 0; // No DRUMSETS folder
+    return 0; // No DRUMKITS folder
   }
 
   FAT32_FileEntry files[FAT32_MAX_FILES];

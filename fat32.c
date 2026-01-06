@@ -35,6 +35,7 @@ static uint8_t sector_buffer[512];
 static uint8_t sectors_per_cluster;
 static uint32_t reserved_sectors;
 static uint32_t fat_size;
+static uint8_t num_fats;
 static uint32_t root_cluster;
 static uint32_t first_data_sector;
 static uint32_t partition_start_lba;
@@ -113,7 +114,7 @@ int FAT32_Init(void) {
   /* Parse boot sector */
   sectors_per_cluster = sector_buffer[BS_SEC_PER_CLUS];
   reserved_sectors = read_u16(sector_buffer, BS_RSVD_SEC_CNT);
-  uint8_t num_fats = sector_buffer[BS_NUM_FATS];
+  num_fats = sector_buffer[BS_NUM_FATS];
   fat_size = read_u32(sector_buffer, BS_FAT_SZ_32);
   root_cluster = read_u32(sector_buffer, BS_ROOT_CLUS);
 
@@ -171,8 +172,13 @@ static uint32_t allocate_free_cluster(void) {
 
         /* Mark as EOF (End of Chain) */
         write_u32(fat_buf, i * 4, 0x0FFFFFFF);
-        if (SDCARD_WriteBlock(fat_sector + s, fat_buf) != SDCARD_OK) {
-          return 0xFFFFFFFF;
+
+        /* Write to ALL FAT copies (usually 2) for proper FAT32 compliance */
+        for (uint8_t fat_copy = 0; fat_copy < num_fats; fat_copy++) {
+          uint32_t fat_copy_sector = fat_sector + (fat_copy * fat_size) + s;
+          if (SDCARD_WriteBlock(fat_copy_sector, fat_buf) != SDCARD_OK) {
+            return 0xFFFFFFFF;
+          }
         }
 
         return cluster;
@@ -477,4 +483,109 @@ int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
   }
 
   return 0;
+}
+
+uint32_t FAT32_CreateDir(uint32_t parent_cluster, const char *name) {
+  /* 1. Check if already exists */
+  uint32_t existing = FAT32_FindDir(parent_cluster, name);
+  if (existing != 0) {
+    return existing;
+  }
+
+  /* 2. Find empty slot in parent directory */
+  uint32_t dir_sector = cluster_to_sector(parent_cluster);
+  int empty_entry = -1;
+  int empty_sector = -1;
+
+  for (int sec = 0; sec < sectors_per_cluster; sec++) {
+    if (SDCARD_ReadBlock(dir_sector + sec, sector_buffer) != SDCARD_OK) {
+      return 0;
+    }
+
+    for (int entry = 0; entry < 16; entry++) {
+      uint8_t *dir_entry = sector_buffer + (entry * 32);
+      if (dir_entry[DIR_NAME] == 0x00 || dir_entry[DIR_NAME] == 0xE5) {
+        empty_entry = entry;
+        empty_sector = sec;
+        goto found_slot;
+      }
+    }
+  }
+
+found_slot:
+  if (empty_entry == -1) {
+    return 0; /* Parent directory full */
+  }
+
+  /* 3. Allocate new cluster */
+  uint32_t new_cluster = allocate_free_cluster();
+  if (new_cluster < 3 || new_cluster == 0xFFFFFFFF) {
+    return 0;
+  }
+
+  /* 4. Initialize the new directory cluster with . and .. entries */
+  uint32_t new_sector = cluster_to_sector(new_cluster);
+  uint8_t zero_buf[512] = {0};
+
+  /* Create "." entry (current directory) */
+  memset(zero_buf, ' ', 32); /* Clear first entry */
+  zero_buf[0] = '.';         /* "." name */
+  zero_buf[DIR_ATTR] = ATTR_DIRECTORY;
+  write_u16(zero_buf, DIR_FSTCLUS_HI, (new_cluster >> 16) & 0xFFFF);
+  write_u16(zero_buf, DIR_FSTCLUS_LO, new_cluster & 0xFFFF);
+  write_u32(zero_buf, DIR_FILE_SIZE, 0);
+
+  /* Create ".." entry (parent directory) */
+  memset(zero_buf + 32, ' ', 32); /* Clear second entry */
+  zero_buf[32] = '.';             /* ".." name */
+  zero_buf[33] = '.';
+  zero_buf[32 + DIR_ATTR] = ATTR_DIRECTORY;
+  write_u16(zero_buf + 32, DIR_FSTCLUS_HI, (parent_cluster >> 16) & 0xFFFF);
+  write_u16(zero_buf + 32, DIR_FSTCLUS_LO, parent_cluster & 0xFFFF);
+  write_u32(zero_buf + 32, DIR_FILE_SIZE, 0);
+
+  /* Write first sector with . and .. entries */
+  if (SDCARD_WriteBlock(new_sector, zero_buf) != SDCARD_OK) {
+    return 0;
+  }
+
+  /* Clear remaining sectors in cluster */
+  memset(zero_buf, 0, 512);
+  for (int sec = 1; sec < sectors_per_cluster; sec++) {
+    if (SDCARD_WriteBlock(new_sector + sec, zero_buf) != SDCARD_OK) {
+      return 0;
+    }
+  }
+
+  /* 5. Create the entry in parent directory */
+  if (SDCARD_ReadBlock(dir_sector + empty_sector, sector_buffer) != SDCARD_OK) {
+    return 0;
+  }
+
+  uint8_t *dir_entry = sector_buffer + (empty_entry * 32);
+  memset(dir_entry, 0, 32);
+
+  /* Set name (simplified 8.3 conversion) */
+  memset(dir_entry, ' ', 11);
+  for (int i = 0; i < 8 && name[i] && name[i] != '.'; i++) {
+    dir_entry[i] = name[i];
+  }
+
+  dir_entry[DIR_ATTR] = ATTR_DIRECTORY;
+  write_u16(dir_entry, DIR_FSTCLUS_HI, (new_cluster >> 16) & 0xFFFF);
+  write_u16(dir_entry, DIR_FSTCLUS_LO, new_cluster & 0xFFFF);
+  write_u32(dir_entry, DIR_FILE_SIZE, 0);
+
+  if (SDCARD_WriteBlock(dir_sector + empty_sector, sector_buffer) !=
+      SDCARD_OK) {
+    return 0;
+  }
+
+  /* Force SD card to flush write cache by doing dummy reads */
+  uint8_t dummy_buf[512];
+  for (int i = 0; i < 3; i++) {
+    SDCARD_ReadBlock(dir_sector + empty_sector, dummy_buf);
+  }
+
+  return new_cluster;
 }

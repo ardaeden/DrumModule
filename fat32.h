@@ -71,4 +71,12 @@ int FAT32_FileExists(uint32_t dir_cluster, const char *filename);
 int FAT32_WriteFile(uint32_t dir_cluster, const char *filename,
                     const uint8_t *data, uint32_t size);
 
+/**
+ * @brief Create a new directory
+ * @param parent_cluster Cluster of the parent directory
+ * @param name Name of the directory (8.3 format)
+ * @return New directory cluster, or 0 on error
+ */
+uint32_t FAT32_CreateDir(uint32_t parent_cluster, const char *name);
+
 #endif

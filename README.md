@@ -72,7 +72,7 @@ Format SD card as **FAT32**.
 
 ```
 /
-├── DRUMSETS/
+├── DRUMKITS/
 │   ├── KIT-001.DRM   (Text-based kit definition)
 │   └── ...
 ├── PATTERNS/
@@ -88,7 +88,7 @@ Format SD card as **FAT32**.
 ## File Formats
 
 ### Drumset (.DRM)
-The drumset files are **text-based** (ASCII) and stored in the `/DRUMSETS/` directory. Each file contains exactly 6 lines, corresponding to the 6 internal channels.
+The drumset files are **text-based** (ASCII) and stored in the `/DRUMKITS/` directory. Each file contains exactly 6 lines, corresponding to the 6 internal channels.
 
 **Row Format:**
 `channel_index,sample_path,volume,pan\n`

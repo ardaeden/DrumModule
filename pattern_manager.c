@@ -9,10 +9,13 @@ int Pattern_Save(Pattern *pattern, uint8_t slot) {
   if (slot < 1 || slot > 100)
     return -1;
 
-  // Find PATTERNS directory
+  // Find or create PATTERNS directory
   uint32_t patterns_cluster = FAT32_FindDir(FAT32_GetRootCluster(), "PATTERNS");
   if (patterns_cluster == 0) {
-    return -1; // Directory must exist
+    patterns_cluster = FAT32_CreateDir(FAT32_GetRootCluster(), "PATTERNS");
+    if (patterns_cluster == 0) {
+      return -1; // Directory must exist
+    }
   }
 
   // Generate filename: PAT-XXX.PAT

@@ -712,7 +712,83 @@ int main(void) {
   NVIC_IPR_BASE[23] = (3 << 4); /* Lower Priority */
 
   /* SD initialization and sample auto-load (Slot 1) */
-  (void)FAT32_Init();
+  int sd_init_result = FAT32_Init();
+
+  if (sd_init_result == 0) {
+    /* Show success message temporarily */
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
+    ST7789_WriteString(10, 100, "SD INIT OK", GREEN, BLACK, 2);
+
+    /* Small stability delay for some SD cards */
+    uint32_t delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 500)
+      __asm("nop");
+
+    /* Auto-create required folders if missing */
+    uint32_t root = FAT32_GetRootCluster();
+
+    /* Try to create each folder and show result */
+    /* Add delays between operations to allow SD card to flush writes */
+
+    uint32_t samples_result = FAT32_CreateDir(root, "SAMPLES");
+    /* Wait 500ms for SD card to commit writes */
+    delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 500)
+      __asm("nop");
+
+    /* VERIFY: Re-check if folder actually exists */
+    uint32_t samples_verify = FAT32_FindDir(root, "SAMPLES");
+    ST7789_WriteString(10, 130, "SAMPLES:", WHITE, BLACK, 2);
+    if (samples_result == 0 || samples_verify == 0) {
+      ST7789_WriteString(110, 130, "FAIL", RED, BLACK, 2);
+    } else {
+      ST7789_WriteString(110, 130, "OK  ", GREEN, BLACK, 2);
+    }
+
+    uint32_t kits_result = FAT32_CreateDir(root, "DRUMKITS");
+    /* Wait 500ms for SD card to commit writes */
+    delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 500)
+      __asm("nop");
+
+    /* VERIFY: Re-check if folder actually exists */
+    uint32_t kits_verify = FAT32_FindDir(root, "DRUMKITS");
+    ST7789_WriteString(10, 150, "DRUMKITS:", WHITE, BLACK, 2);
+    if (kits_result == 0 || kits_verify == 0) {
+      ST7789_WriteString(130, 150, "FAIL", RED, BLACK, 2);
+    } else {
+      ST7789_WriteString(130, 150, "OK  ", GREEN, BLACK, 2);
+    }
+
+    uint32_t pats_result = FAT32_CreateDir(root, "PATTERNS");
+    /* Wait 500ms for SD card to commit writes */
+    delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 500)
+      __asm("nop");
+
+    /* VERIFY: Re-check if folder actually exists */
+    uint32_t pats_verify = FAT32_FindDir(root, "PATTERNS");
+    ST7789_WriteString(10, 170, "PATTERNS:", WHITE, BLACK, 2);
+    if (pats_result == 0 || pats_verify == 0) {
+      ST7789_WriteString(130, 170, "FAIL", RED, BLACK, 2);
+    } else {
+      ST7789_WriteString(130, 170, "OK  ", GREEN, BLACK, 2);
+    }
+
+    /* Wait 3 seconds so user can read the results */
+    delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 3000)
+      __asm("nop");
+
+  } else {
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
+    ST7789_WriteString(10, 100, "SD INIT FAIL", RED, BLACK, 2);
+    /* Wait 2 seconds */
+    uint32_t delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 2000)
+      __asm("nop");
+  }
+
   static Drumset drumset;
   memset(&drumset, 0, sizeof(Drumset));
   for (int i = 0; i < NUM_CHANNELS; i++) {

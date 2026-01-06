@@ -113,7 +113,7 @@ void SystemClock_Config(void) {
 
 /* Private function prototypes */
 static void LoadTestPattern(void);
-static void DrawMainScreen(Drumset *drumset);
+static void DrawMainScreen(Drumset *drumset, uint8_t full_redraw);
 static void DrawDrumsetMenu(uint8_t full_redraw);
 static void DrawPatternMenu(uint8_t full_redraw);
 static void ExitPatternMenu(void);
@@ -562,8 +562,8 @@ static void DrawPatternMenu(uint8_t full_redraw) {
     /* Main Menu */
     ST7789_WriteString(10, 10, "PATTERN MENU", CYAN, BLACK, 2);
 
-    const char *menu_items[] = {"LOAD", "SAVE", "BACK"};
-    for (int i = 0; i < 3; i++) {
+    const char *menu_items[] = {"LOAD", "SAVE", "CLEAR", "BACK"};
+    for (int i = 0; i < 4; i++) {
       uint16_t y_pos = 60 + (i * 40);
       uint16_t color = (i == pattern_menu_index) ? WHITE : GRAY;
 
@@ -756,7 +756,7 @@ int main(void) {
 
   /* Ensure Encoder matches the default 120 */
   Encoder_SetValue(default_bpm);
-  DrawMainScreen(&drumset);
+  DrawMainScreen(&drumset, 1);
 
   int32_t last_encoder = 0;
   int32_t last_increment = 0;
@@ -780,7 +780,7 @@ int main(void) {
         } else if (is_pattern_detail_mode) {
           DrawStepEditScreen(1);
         } else {
-          DrawMainScreen(current_drumset);
+          DrawMainScreen(current_drumset, 1);
         }
         full_redraw_needed = 0;
       } else {
@@ -801,7 +801,7 @@ int main(void) {
 
     /* Handle Async Popup (Success/Error) */
     if (is_ui_popup) {
-      if (HAL_GetTick() - ui_popup_start_time > 1200) {
+      if (HAL_GetTick() - ui_popup_start_time > 1000) {
         is_ui_popup = 0;
 
         /* Handle automatic menu exit on success if requested */
@@ -838,7 +838,7 @@ int main(void) {
         /* Long-press (0.5s) detected */
         is_pattern_menu_mode = 1;
         pattern_menu_index = 0;
-        Encoder_SetLimits(0, 2);
+        Encoder_SetLimits(0, 3);
         Encoder_SetValue(0);
         DrawPatternMenu(1); /* Full redraw on entry */
         button_pattern_handled = 1;
@@ -1213,10 +1213,16 @@ static void LoadTestPattern(void) {
   Sequencer_SetStep(5, 16, 100); // Start of Bar 2 accent
 }
 
-static void DrawMainScreen(Drumset *drumset) {
-  /* Targeted clears instead of full screen Fill(BLACK) */
-  ST7789_FillRect(0, 0, 320, 40, BLACK);   /* Header */
-  ST7789_FillRect(0, 215, 320, 25, BLACK); /* Footer */
+static void DrawMainScreen(Drumset *drumset, uint8_t full_redraw) {
+  if (full_redraw) {
+    /* Clear header, footer AND middle content area to remove any popups/menus
+     */
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
+  } else {
+    /* Targeted clears instead of full screen Fill(BLACK) */
+    ST7789_FillRect(0, 0, 320, 40, BLACK);   /* Header */
+    ST7789_FillRect(0, 215, 320, 25, BLACK); /* Footer */
+  }
 
   if (is_pattern_edit_mode) {
     ST7789_WriteString(10, 10, "PATTERN EDIT ", CYAN, BLACK, 2);
@@ -1510,6 +1516,13 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             Encoder_SetValue(1);
             occupied_slot_count = Pattern_GetOccupiedSlots(occupied_slots, 100);
             full_redraw_needed = 1;
+          } else if (pattern_menu_index == 2) { /* CLEAR */
+            Sequencer_ClearPattern();
+            is_pattern_edit_mode = 1;
+            is_edit_mode = 0;
+            is_channel_edit_mode = 0;
+            ShowPopup("PATTERN CLEARED", CYAN, 2);
+            return;
           } else { /* BACK */
             ExitPatternMenu();
           }
@@ -1519,7 +1532,9 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           Pattern *pat = Sequencer_GetPattern();
           if (Pattern_Save(pat, selected_slot) == 0) {
             loaded_pattern_slot = selected_slot;
+            is_pattern_edit_mode = 1; /* Redirect to grid */
             ShowPopup("PATTERN SAVED", GREEN, 2);
+            return;
           } else {
             ShowPopup("ERR SAVE", RED, 0);
           }
@@ -1528,27 +1543,25 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           if (occupied_slot_count > 0) {
             Pattern temp_pat;
             if (Pattern_Load(&temp_pat, selected_slot) == 0) {
-              /* Always switch to main screen on pattern load */
-              is_pattern_edit_mode = 0;
+              /* Always switch to Pattern Edit grid on pattern load */
+              is_pattern_edit_mode = 1;
               is_pattern_detail_mode = 0;
               is_edit_mode = 0;
 
               if (is_playing) {
                 /* Queue for next loop */
                 Sequencer_QueuePattern(&temp_pat, selected_slot);
-                ExitPatternMenu();
+                ShowPopup("PATTERN QUEUED", GREEN, 2);
+                return;
               } else {
                 /* Load immediately */
                 Pattern *current = Sequencer_GetPattern();
                 uint16_t current_bpm = current->bpm;
                 memcpy(current, &temp_pat, sizeof(Pattern));
                 current->bpm = current_bpm; /* Restore current tempo */
-                /* Note: BPM update intentionally disabled per user request */
                 loaded_pattern_slot = selected_slot;
-                ExitPatternMenu();
-                ShowPopup("PATTERN LOADED", GREEN,
-                          0); /* Small success pop, no exit type since already
-                                 exited */
+                ShowPopup("PATTERN LOADED", GREEN, 2);
+                return;
               }
             } else {
               ShowPopup("ERR LOAD", RED, 0);
@@ -1562,7 +1575,7 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
           /* Go back to main pattern menu */
           is_pattern_menu_mode = 1;
           pattern_menu_index = 0;
-          Encoder_SetLimits(0, 2);
+          Encoder_SetLimits(0, 3);
           Encoder_SetValue(0);
           mode_changed = 1;
           full_redraw_needed = 1;

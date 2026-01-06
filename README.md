@@ -26,7 +26,10 @@ A 6-channel, 32-step drum sequencer for Eurorack modular synthesizers, built on 
   - Active Step Visualizers.
   - Large Status Indicator (PLAYING/STOPPED).
   - **Pattern ID**: Displays the current pattern slot (`P-001`) with a blinking indicator when a change is queued.
-- **Performance Focused**: Drumset editing and management menus are accessible **during playback** for real-time kit adjustments.
+- **Performance Focused**: 
+  - **Direct Step Count Editing**: Adjust pattern length (1-32) directly from the Grid screen with high-contrast **inverted highlights**.
+  - **Ghost Steps**: Visual "dimming" of steps outside the current pattern length for clear focus, while preserving underlying data.
+  - **Real-time Access**: Drumset editing and management menus are accessible **during playback** for real-time kit adjustments.
 
 ## Hardware
 
@@ -117,11 +120,15 @@ The pattern files are **binary-based** memory dumps of the `Pattern` C-struct (~
 *Note: Total file size is exactly 212 bytes due to struct alignment.*
 
 ## Development Status
+✅ **Phase 8 Complete**:
+- [x] **Direct Step Count Edit**: Directly adjust pattern length with high-contrast visual feedback.
+- [x] **Ghost Steps**: Advanced visualization for inactive pattern steps.
+- [x] **UX Polish**: Standardized popup durations, standardized redirection flows, and improved playhead visibility.
+- [x] **Bug Fixes**: Resolved BPM reset and focus persistence issues.
+
 ✅ **Phase 7 Complete**:
-- [x] **Deep Code Cleanup**: Removed dead code, unused variables, and standardized global state tracking.
+- [x] **Deep Code Cleanup**: Removed dead code and standardized global state.
 - [x] **UI Performance**: Flicker-free incremental redraws and improved playhead centering.
-- [x] **Real-time Editing**: Unlocked Drumset/Kit management during live playback.
-- [x] **Aesthetics**: Standardized color palette (Gray, Dark Blue, Cyan, etc.) for a premium UI feel.
 
 ## Credits
 

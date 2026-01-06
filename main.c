@@ -903,7 +903,7 @@ int main(void) {
             if (is_pattern_detail_mode) {
               /* Quick return to Grid Mode from Step Edit */
               is_pattern_detail_mode = 0;
-              Encoder_SetLimits(0, NUM_CHANNELS - 1);
+              Encoder_SetLimits(-1, NUM_CHANNELS - 1);
               Encoder_SetValue(selected_channel);
               Encoder_ResetIncrement();
               full_redraw_needed = 1;
@@ -1001,7 +1001,7 @@ int main(void) {
         DrawStepEditScreen(0); /* Incremental redraw of step cursor */
       } else if (is_edit_mode || is_pattern_edit_mode) {
         /* Handle Channel Selection in both Normal Edit and Pattern Edit */
-        selected_channel = (uint8_t)encoder_val;
+        selected_channel = (int8_t)encoder_val;
         mode_changed = 1; // Trigger UI update for channel highlight
       } else {
         /* Handle BPM Change */
@@ -1963,10 +1963,10 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
         ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, 0x4208);
       }
 
-      /* 4. Draw Playhead Indicator (Centered 10x10 White Square) if active */
+      /* 4. Draw Playhead Indicator (Centered 10x10 Black Square) if active */
       if (i == current_play_step) {
         ST7789_FillRect(x + (BOX_W / 2) - 5, y + (BOX_H / 2) - 5, 10, 10,
-                        WHITE);
+                        BLACK);
       }
     }
   }

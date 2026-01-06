@@ -128,7 +128,8 @@ static volatile uint8_t is_playing = 0;
 static volatile uint8_t is_edit_mode = 0; /* 0=Normal, 1=Drumset Edit */
 /* Channel Edit Mode States: 0=Off, 1=Menu, 2=Browser, 3=Vol, 4=Pan */
 static volatile uint8_t is_channel_edit_mode = 0;
-static volatile uint8_t selected_channel = 0;
+static volatile int8_t selected_channel = 0;
+static uint8_t is_step_count_editing = 0;
 static volatile uint32_t saved_bpm = 120;
 static volatile uint8_t mode_changed = 0;
 static volatile uint8_t is_pattern_edit_mode = 0;
@@ -149,7 +150,7 @@ static int last_bpm = -1;
 static int last_is_edit = -1;
 static int last_is_pattern_edit = -1;
 static int last_is_playing = -1;
-static uint8_t last_drawn_channel = 0xFF;
+static int8_t last_drawn_channel = -2;
 
 static FAT32_FileEntry file_list[FAT32_MAX_FILES];
 static int file_count = 0;
@@ -537,12 +538,13 @@ static void ExitDrumsetMenu(void) {
 
 static void ExitPatternMenu(void) {
   is_pattern_menu_mode = 0;
+  is_step_count_editing = 0;
   if (is_pattern_edit_mode) {
     if (is_pattern_detail_mode) {
       Encoder_SetLimits(0, 31);
       Encoder_SetValue(pattern_cursor);
     } else {
-      Encoder_SetLimits(0, NUM_CHANNELS - 1);
+      Encoder_SetLimits(-1, NUM_CHANNELS - 1);
       Encoder_SetValue(selected_channel);
     }
   } else {
@@ -842,6 +844,7 @@ int main(void) {
         Encoder_SetValue(0);
         DrawPatternMenu(1); /* Full redraw on entry */
         button_pattern_handled = 1;
+        is_step_count_editing = 0;
       }
     }
 
@@ -917,16 +920,21 @@ int main(void) {
                     channel_states[i] = 0;
                   }
                 }
-                Encoder_SetLimits(0, NUM_CHANNELS - 1);
+                Encoder_SetLimits(-1, NUM_CHANNELS - 1);
                 Encoder_SetValue(selected_channel);
                 Encoder_ResetIncrement();
-                UpdateBlinker(selected_channel,
-                              1); /* Ensure selection is visible */
+                if (selected_channel >= 0) {
+                  UpdateBlinker(selected_channel,
+                                1); /* Ensure selection is visible */
+                }
               } else {
+                is_step_count_editing = 0;
                 /* Return to previous limits */
                 if (is_edit_mode) {
                   Encoder_SetLimits(0, NUM_CHANNELS - 1);
-                  Encoder_SetValue(selected_channel);
+                  Encoder_SetValue(selected_channel < 0 ? 0 : selected_channel);
+                  if (selected_channel < 0)
+                    selected_channel = 0;
                 } else {
                   Encoder_SetLimits(40, 300);
                   Encoder_SetValue(Sequencer_GetBPM());
@@ -984,6 +992,10 @@ int main(void) {
           selected_slot = occupied_slots[encoder_val];
           DrawPatternMenu(0);
         }
+      } else if (is_step_count_editing) {
+        /* Direct Step Count Editing */
+        Sequencer_SetStepCount((uint8_t)encoder_val);
+        mode_changed = 1;
       } else if (is_pattern_detail_mode) {
         pattern_cursor = (int8_t)encoder_val;
         DrawStepEditScreen(0); /* Incremental redraw of step cursor */
@@ -1063,11 +1075,17 @@ int main(void) {
       /* Sequencer animation */
       if (is_playing) {
         uint8_t step = Sequencer_GetCurrentStep();
-        if (step != last_step) {
+        if (step != last_step || mode_changed) {
           char buf[32];
+          uint16_t color = WHITE;
+          uint16_t bg = BLACK;
+          if (is_pattern_edit_mode && selected_channel == -1) {
+            color = BLACK;
+            bg = is_step_count_editing ? YELLOW : CYAN;
+          }
           snprintf(buf, sizeof(buf), "%02d/%02d", step + 1,
                    Sequencer_GetStepCount());
-          ST7789_WriteString(255, 10, buf, WHITE, BLACK, 2);
+          ST7789_WriteString(255, 10, buf, color, bg, 2);
 
           for (uint8_t i = 0; i < NUM_CHANNELS; i++) {
             uint8_t velocity = Sequencer_GetStep(i, step);
@@ -1107,6 +1125,17 @@ int main(void) {
             channel_states[i] = 0;
           }
         }
+      } else if (is_pattern_edit_mode) {
+        /* Draw step count even when stopped if in pattern edit mode */
+        char buf[32];
+        uint16_t color = WHITE;
+        uint16_t bg = BLACK;
+        if (selected_channel == -1) {
+          color = BLACK;
+          bg = is_step_count_editing ? YELLOW : CYAN;
+        }
+        snprintf(buf, sizeof(buf), "%02d/%02d", 1, Sequencer_GetStepCount());
+        ST7789_WriteString(255, 10, buf, color, bg, 2);
       }
       /* Handle Queued Pattern UI and detection */
       static uint8_t last_queued_state = 0;
@@ -1236,8 +1265,15 @@ static void DrawMainScreen(Drumset *drumset, uint8_t full_redraw) {
   }
 
   char step_buf[32];
-  snprintf(step_buf, sizeof(step_buf), "01/%02d", Sequencer_GetStepCount());
-  ST7789_WriteString(255, 10, step_buf, WHITE, BLACK, 2);
+  uint16_t step_color = WHITE;
+  uint16_t step_bg = BLACK;
+  if (is_pattern_edit_mode && selected_channel == -1) {
+    step_color = BLACK;
+    step_bg = is_step_count_editing ? YELLOW : CYAN;
+  }
+  snprintf(step_buf, sizeof(step_buf), "%02d/%02d", 1,
+           Sequencer_GetStepCount());
+  ST7789_WriteString(255, 10, step_buf, step_color, step_bg, 2);
 
   /* Pattern Info (Center, Yellow) */
   if (loaded_pattern_slot > 0) {
@@ -1307,7 +1343,7 @@ static void DrawMainScreen(Drumset *drumset, uint8_t full_redraw) {
   last_is_pattern_edit = is_pattern_edit_mode;
   last_is_playing = is_playing;
   last_drawn_channel =
-      (is_edit_mode || is_pattern_edit_mode) ? selected_channel : 0xFF;
+      (is_edit_mode || is_pattern_edit_mode) ? selected_channel : -2;
 }
 
 static void UpdateModeUI(void) {
@@ -1338,6 +1374,19 @@ static void UpdateModeUI(void) {
       snprintf(pat_buf, sizeof(pat_buf), "P-%03d", loaded_pattern_slot);
       ST7789_WriteString(170, 10, pat_buf, YELLOW, BLACK, 2);
     }
+
+    /* Redraw Step Count too as color might have changed */
+    char step_buf[32];
+    uint16_t step_color = WHITE;
+    uint16_t step_bg = BLACK;
+    if (is_pattern_edit_mode && selected_channel == -1) {
+      step_color = BLACK;
+      step_bg = is_step_count_editing ? YELLOW : CYAN;
+    }
+    snprintf(step_buf, sizeof(step_buf), "%02d/%02d",
+             is_playing ? Sequencer_GetCurrentStep() + 1 : 1,
+             Sequencer_GetStepCount());
+    ST7789_WriteString(255, 10, step_buf, step_color, step_bg, 2);
   }
 
   /* Update Status Footer only on playback state change */
@@ -1351,20 +1400,23 @@ static void UpdateModeUI(void) {
   /* Handle Channel Highlight */
   if (is_edit_mode || is_pattern_edit_mode) {
     if (last_drawn_channel != selected_channel) {
-      /* Unhighlight previous if it was valid */
-      if (last_drawn_channel < NUM_CHANNELS) {
+      /* Unhighlight previous if it was valid channel (0..5) */
+      if (last_drawn_channel >= 0 && last_drawn_channel < NUM_CHANNELS) {
         UpdateBlinker(last_drawn_channel, 0);
       }
-      UpdateBlinker(selected_channel, 1);
+      /* Highlight new if it is a valid channel (0..5) */
+      if (selected_channel >= 0 && selected_channel < NUM_CHANNELS) {
+        UpdateBlinker(selected_channel, 1);
+      }
       last_drawn_channel = selected_channel;
     }
   } else {
     /* Clear any active highlight when exiting edit mode */
-    if (last_drawn_channel != 0xFF) {
+    if (last_drawn_channel != -2) {
       for (int i = 0; i < NUM_CHANNELS; i++) {
         UpdateBlinker(i, 0);
       }
-      last_drawn_channel = 0xFF;
+      last_drawn_channel = -2;
     }
   }
 }
@@ -1588,6 +1640,21 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
   if (pressed) {
     if (button_id == BUTTON_ENCODER) {
       if (is_pattern_edit_mode) {
+        if (selected_channel == -1) {
+          /* Toggle Step Count Edit mode */
+          is_step_count_editing = !is_step_count_editing;
+          if (is_step_count_editing) {
+            Encoder_SetLimits(1, 32);
+            Encoder_SetValue(Sequencer_GetStepCount());
+          } else {
+            Encoder_SetLimits(-1, NUM_CHANNELS - 1);
+            Encoder_SetValue(-1);
+          }
+          full_redraw_needed = 1;
+          mode_changed = 1;
+          return;
+        }
+
         if (!is_pattern_detail_mode) {
           is_pattern_detail_mode = 1;
           pattern_cursor = 0;

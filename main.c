@@ -236,7 +236,8 @@ static void ScanDirectory(void) {
 
 static void DrawChannelEditScreen(uint8_t full_redraw) {
   if (full_redraw) {
-    ST7789_Fill(BLACK);
+    ST7789_FillRect(0, 40, 320, 200,
+                    BLACK); /* Clear content area, keep header */
     char buf[32];
     snprintf(buf, sizeof(buf), "CH %d EDIT", selected_channel + 1);
     ST7789_WriteString(10, 10, buf, YELLOW, BLACK, 2);
@@ -403,7 +404,7 @@ static void DrawChannelEditScreen(uint8_t full_redraw) {
 
 static void DrawDrumsetMenu(uint8_t full_redraw) {
   if (full_redraw) {
-    ST7789_Fill(BLACK);
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
   }
 
   if (is_drumset_menu_mode == 1) {
@@ -554,7 +555,7 @@ static void ExitPatternMenu(void) {
 
 static void DrawPatternMenu(uint8_t full_redraw) {
   if (full_redraw) {
-    ST7789_Fill(BLACK);
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
   }
 
   if (is_pattern_menu_mode == 1) {
@@ -653,14 +654,14 @@ static void ToggleEditMode(void) {
         channel_states[i] = 0;
       }
     }
-    saved_bpm = Encoder_GetValue();
+    saved_bpm = Sequencer_GetBPM();
     Encoder_SetLimits(0, NUM_CHANNELS - 1);
     Encoder_SetValue(selected_channel);
     Encoder_ResetIncrement();
   } else {
     selected_channel = Encoder_GetValue();
     Encoder_SetLimits(40, 300);
-    Encoder_SetValue(saved_bpm);
+    Encoder_SetValue(Sequencer_GetBPM());
   }
   mode_changed = 1;
 }
@@ -851,10 +852,17 @@ int main(void) {
         button_drumset_pressed = 0;
         if (!button_drumset_handled && !is_drumset_menu_mode) {
           if (is_pattern_edit_mode || is_pattern_detail_mode) {
+            uint8_t was_detail = is_pattern_detail_mode;
             is_pattern_edit_mode = 0;
             is_pattern_detail_mode = 0;
             is_edit_mode = 0; /* ToggleEditMode will set it to 1 */
-            full_redraw_needed = 1;
+            if (was_detail) {
+              full_redraw_needed =
+                  1; /* Pattern Detail -> Drumset Edit needs full redraw */
+            } else {
+              full_redraw_needed = 0; /* Pattern Edit -> Drumset Edit: same
+                                         layout, just update header */
+            }
           }
           /* Short press (Click) detected - toggle edit mode */
           ToggleEditMode();
@@ -876,10 +884,17 @@ int main(void) {
           /* Toggle Pattern Edit Mode - Block if in Drumset Menu */
           if (!is_drumset_menu_mode) {
             if (is_edit_mode || is_channel_edit_mode) {
+              uint8_t was_channel_edit = is_channel_edit_mode;
               is_edit_mode = 0;
               is_channel_edit_mode = 0;
               is_pattern_edit_mode = 0; /* Toggle below will set it to 1 */
-              full_redraw_needed = 1;
+              if (was_channel_edit) {
+                full_redraw_needed =
+                    1; /* Channel Edit -> Pattern Edit needs full redraw */
+              } else {
+                full_redraw_needed = 0; /* Drumset Edit -> Pattern Edit: same
+                                           layout, just update header */
+              }
             }
 
             if (is_pattern_detail_mode) {
@@ -1199,7 +1214,9 @@ static void LoadTestPattern(void) {
 }
 
 static void DrawMainScreen(Drumset *drumset) {
-  ST7789_Fill(BLACK);
+  /* Targeted clears instead of full screen Fill(BLACK) */
+  ST7789_FillRect(0, 0, 320, 40, BLACK);   /* Header */
+  ST7789_FillRect(0, 215, 320, 25, BLACK); /* Footer */
 
   if (is_pattern_edit_mode) {
     ST7789_WriteString(10, 10, "PATTERN EDIT ", CYAN, BLACK, 2);
@@ -1705,17 +1722,6 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
         Encoder_ToggleIncrement();
       }
     } else if (button_id == BUTTON_DRUMSET) {
-      if (is_pattern_detail_mode) {
-        if (pressed) {
-          is_pattern_detail_mode = 0;
-          Encoder_SetLimits(0, NUM_CHANNELS - 1);
-          Encoder_SetValue(selected_channel);
-          full_redraw_needed = 1;
-          mode_changed = 1;
-          button_drumset_handled = 1;
-        }
-        return;
-      }
 
       if (is_channel_edit_mode == 2) {
         /* Back from Browser -> Menu */
@@ -1787,7 +1793,7 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
   uint8_t current_play_step = is_playing ? Sequencer_GetCurrentStep() : 0xFF;
 
   if (full_redraw == 1) {
-    ST7789_Fill(BLACK);
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
 
     /* Dedicated Header */
     char tit_buf[48];

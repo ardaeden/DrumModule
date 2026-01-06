@@ -150,6 +150,7 @@ static int last_bpm = -1;
 static int last_is_edit = -1;
 static int last_is_pattern_edit = -1;
 static int last_is_playing = -1;
+static int last_is_step_count_editing = -1;
 static int8_t last_drawn_channel = -2;
 
 static FAT32_FileEntry file_list[FAT32_MAX_FILES];
@@ -237,8 +238,8 @@ static void ScanDirectory(void) {
 
 static void DrawChannelEditScreen(uint8_t full_redraw) {
   if (full_redraw) {
-    ST7789_FillRect(0, 40, 320, 200,
-                    BLACK); /* Clear content area, keep header */
+    ST7789_FillRect(0, 0, 320, 240,
+                    BLACK); /* Clear entire screen */
     char buf[32];
     snprintf(buf, sizeof(buf), "CH %d EDIT", selected_channel + 1);
     ST7789_WriteString(10, 10, buf, YELLOW, BLACK, 2);
@@ -1396,9 +1397,10 @@ static void DrawMainScreen(Drumset *drumset, uint8_t full_redraw) {
 static void UpdateModeUI(void) {
   int current_bpm = (int)Encoder_GetValue();
 
-  /* Update Header only on mode or BPM change */
+  /* Update Header only on mode, BPM or Step Count Edit change */
   if (is_pattern_edit_mode != last_is_pattern_edit ||
       is_edit_mode != last_is_edit ||
+      is_step_count_editing != last_is_step_count_editing ||
       (!is_edit_mode && !is_pattern_edit_mode && current_bpm != last_bpm)) {
     if (is_pattern_edit_mode) {
       ST7789_WriteString(10, 10, "PATTERN EDIT ", CYAN, BLACK, 2);
@@ -1434,6 +1436,8 @@ static void UpdateModeUI(void) {
              is_playing ? Sequencer_GetCurrentStep() + 1 : 1,
              Sequencer_GetStepCount());
     ST7789_WriteString(255, 10, step_buf, step_color, step_bg, 2);
+
+    last_is_step_count_editing = is_step_count_editing;
   }
 
   /* Update Status Footer only on playback state change */
@@ -1697,7 +1701,6 @@ static void OnButtonEvent(uint8_t button_id, uint8_t pressed) {
             Encoder_SetLimits(-1, NUM_CHANNELS - 1);
             Encoder_SetValue(-1);
           }
-          full_redraw_needed = 1;
           mode_changed = 1;
           return;
         }

@@ -1857,6 +1857,20 @@ static void ShowPopup(const char *msg, uint16_t color, uint8_t exit_type) {
   ui_popup_exit_type = exit_type;
 }
 
+static uint16_t DimColor(uint16_t color) {
+  /* Extract RGB565 components */
+  uint16_t r = (color >> 11) & 0x1F;
+  uint16_t g = (color >> 5) & 0x3F;
+  uint16_t b = color & 0x1F;
+
+  /* Dim by 2 (right shift) */
+  r >>= 2;
+  g >>= 2;
+  b >>= 2;
+
+  return (r << 11) | (g << 5) | b;
+}
+
 static void DrawStepEditScreen(uint8_t full_redraw) {
   const int BOX_W = 34;
   const int BOX_H = 36; /* Taller boxes for full screen */
@@ -1919,28 +1933,34 @@ static void DrawStepEditScreen(uint8_t full_redraw) {
     }
 
     if (redraw) {
-
       uint8_t velocity = Sequencer_GetStep(selected_channel, i);
+      uint8_t step_count = Sequencer_GetStepCount();
+      uint8_t is_ghost = (i >= step_count);
 
-      /* 1. Clear Box with Background Color */
-      ST7789_FillRect(x, y, BOX_W, BOX_H, bg_box_color);
+      /* 1. Clear Box with Background Color - BLACK for ghost steps */
+      ST7789_FillRect(x, y, BOX_W, BOX_H, is_ghost ? BLACK : bg_box_color);
 
       /* 2. Draw Velocity-based Indicator */
       if (velocity > 0) {
+        uint16_t draw_color = is_ghost ? DimColor(ch_color) : ch_color;
+
         if (velocity >= 255) {
-          ST7789_FillRect(x, y, BOX_W, BOX_H, ch_color);
+          ST7789_FillRect(x, y, BOX_W, BOX_H, draw_color);
         } else if (velocity >= 128) {
-          ST7789_FillRect(x + 5, y + 6, 24, 24, ch_color);
+          ST7789_FillRect(x + 5, y + 6, 24, 24, draw_color);
         } else if (velocity >= 64) {
-          ST7789_FillRect(x + 9, y + 10, 16, 16, ch_color);
+          ST7789_FillRect(x + 9, y + 10, 16, 16, draw_color);
         } else {
-          ST7789_FillRect(x + 13, y + 14, 8, 8, ch_color);
+          ST7789_FillRect(x + 13, y + 14, 8, 8, draw_color);
         }
       }
 
       /* 3. Draw Manual Selection Frame (White) */
       if (i == pattern_cursor) {
         ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 2, WHITE);
+      } else if (is_ghost) {
+        /* 3b. Draw Ghost Frame (Dimmed Grey) if not focused */
+        ST7789_DrawThickFrame(x, y, BOX_W, BOX_H, 1, 0x4208);
       }
 
       /* 4. Draw Playhead Indicator (Centered 10x10 White Square) if active */

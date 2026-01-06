@@ -715,77 +715,41 @@ int main(void) {
   int sd_init_result = FAT32_Init();
 
   if (sd_init_result == 0) {
-    /* Show success message temporarily */
-    ST7789_FillRect(0, 0, 320, 240, BLACK);
-    ST7789_WriteString(10, 100, "SD INIT OK", GREEN, BLACK, 2);
-
-    /* Small stability delay for some SD cards */
-    uint32_t delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 500)
-      __asm("nop");
-
     /* Auto-create required folders if missing */
     uint32_t root = FAT32_GetRootCluster();
 
-    /* Try to create each folder and show result */
-    /* Add delays between operations to allow SD card to flush writes */
-
+    /* Create folders (no delays needed - SD handles sequential writes) */
     uint32_t samples_result = FAT32_CreateDir(root, "SAMPLES");
-    /* Wait 500ms for SD card to commit writes */
-    delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 500)
-      __asm("nop");
-
-    /* VERIFY: Re-check if folder actually exists */
-    uint32_t samples_verify = FAT32_FindDir(root, "SAMPLES");
-    ST7789_WriteString(10, 130, "SAMPLES:", WHITE, BLACK, 2);
-    if (samples_result == 0 || samples_verify == 0) {
-      ST7789_WriteString(110, 130, "FAIL", RED, BLACK, 2);
-    } else {
-      ST7789_WriteString(110, 130, "OK  ", GREEN, BLACK, 2);
-    }
-
     uint32_t kits_result = FAT32_CreateDir(root, "DRUMKITS");
-    /* Wait 500ms for SD card to commit writes */
-    delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 500)
-      __asm("nop");
-
-    /* VERIFY: Re-check if folder actually exists */
-    uint32_t kits_verify = FAT32_FindDir(root, "DRUMKITS");
-    ST7789_WriteString(10, 150, "DRUMKITS:", WHITE, BLACK, 2);
-    if (kits_result == 0 || kits_verify == 0) {
-      ST7789_WriteString(130, 150, "FAIL", RED, BLACK, 2);
-    } else {
-      ST7789_WriteString(130, 150, "OK  ", GREEN, BLACK, 2);
-    }
-
     uint32_t pats_result = FAT32_CreateDir(root, "PATTERNS");
-    /* Wait 500ms for SD card to commit writes */
-    delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 500)
-      __asm("nop");
 
-    /* VERIFY: Re-check if folder actually exists */
-    uint32_t pats_verify = FAT32_FindDir(root, "PATTERNS");
+    /* Show quick status feedback */
+    ST7789_FillRect(0, 0, 320, 240, BLACK);
+    ST7789_WriteString(10, 100, "SD INIT OK", GREEN, BLACK, 2);
+
+    ST7789_WriteString(10, 130, "SAMPLES:", WHITE, BLACK, 2);
+    ST7789_WriteString(110, 130, samples_result ? "OK  " : "FAIL",
+                       samples_result ? GREEN : RED, BLACK, 2);
+
+    ST7789_WriteString(10, 150, "DRUMKITS:", WHITE, BLACK, 2);
+    ST7789_WriteString(130, 150, kits_result ? "OK  " : "FAIL",
+                       kits_result ? GREEN : RED, BLACK, 2);
+
     ST7789_WriteString(10, 170, "PATTERNS:", WHITE, BLACK, 2);
-    if (pats_result == 0 || pats_verify == 0) {
-      ST7789_WriteString(130, 170, "FAIL", RED, BLACK, 2);
-    } else {
-      ST7789_WriteString(130, 170, "OK  ", GREEN, BLACK, 2);
-    }
+    ST7789_WriteString(130, 170, pats_result ? "OK  " : "FAIL",
+                       pats_result ? GREEN : RED, BLACK, 2);
 
-    /* Wait 3 seconds so user can read the results */
-    delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 3000)
+    /* Brief delay so user can see status (500ms) */
+    uint32_t delay_start = HAL_GetTick();
+    while (HAL_GetTick() - delay_start < 500)
       __asm("nop");
 
   } else {
     ST7789_FillRect(0, 0, 320, 240, BLACK);
     ST7789_WriteString(10, 100, "SD INIT FAIL", RED, BLACK, 2);
-    /* Wait 2 seconds */
+    /* Brief delay (1 second) */
     uint32_t delay_start = HAL_GetTick();
-    while (HAL_GetTick() - delay_start < 2000)
+    while (HAL_GetTick() - delay_start < 1000)
       __asm("nop");
   }
 
@@ -818,11 +782,15 @@ int main(void) {
     I2S_Start();
   }
 
+  /* Small delay to allow SD card to fully stabilize after init */
+  uint32_t sd_stable_delay = HAL_GetTick();
+  while (HAL_GetTick() - sd_stable_delay < 100)
+    __asm("nop");
+
   /* Attempt to load Pattern Slot 1 on boot */
   Pattern *boot_pat = Sequencer_GetPattern();
   uint16_t default_bpm = 120;
   if (Pattern_Load(boot_pat, 1) == 0) {
-    loaded_pattern_slot = 1;
     /* Force default 120 BPM regardless of file content */
     boot_pat->bpm = default_bpm;
     Sequencer_SetBPM(default_bpm);
@@ -831,6 +799,9 @@ int main(void) {
     LoadTestPattern();
     Sequencer_SetBPM(default_bpm);
   }
+
+  /* Always set slot to 1 for UI consistency (P-001 display) */
+  loaded_pattern_slot = 1;
 
   /* Ensure Encoder matches the default 120 */
   Encoder_SetValue(default_bpm);
